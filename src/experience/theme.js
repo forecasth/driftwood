@@ -7,5 +7,11 @@ export const palette = Object.freeze({
   ambient: '#2f4139',
   directional: '#736149',
   particles: '#b0bbb9',
+  treeTrunk: '#171f1b',
+  treeCanopy: '#1c2722',
+  treeCanopyEmissive: '#101713',
+  amberTreeBark: '#3f3324',
+  amberTree: '#5f4b30',
+  amberTreeGlow: '#8a6f43',
   emberGlow: '#8a6f43',
 })

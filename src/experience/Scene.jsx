@@ -1,9 +1,12 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
+import * as Tone from 'tone'
+import { defaultArrangementId, listArrangements } from './audio/arrangements/index.js'
 import AmbienceAudio from './components/AmbienceAudio.jsx'
 import CameraController from './components/CameraController.jsx'
 import Lighting from './components/Lighting.jsx'
 import Particles from './components/Particles.jsx'
+import Trees from './components/Trees.jsx'
 import { SceneContext } from './sceneContext.js'
 import { palette } from './theme.js'
 import './Scene.css'
@@ -12,7 +15,16 @@ function Scene() {
   const mountRef = useRef(null)
   const sceneStateRef = useRef(null)
   const frameSubscribersRef = useRef(new Set())
+  const clickablesRef = useRef(new Map())
+  const isPlayingRef = useRef(false)
+  const arrangementIds = useMemo(() => listArrangements(), [])
+  const [arrangementId, setArrangementId] = useState(defaultArrangementId)
+  const [isPlaying, setIsPlaying] = useState(false)
   const [sceneToken, setSceneToken] = useState(0)
+
+  useEffect(() => {
+    isPlayingRef.current = isPlaying
+  }, [isPlaying])
 
   const registerFrame = useCallback((subscriber) => {
     frameSubscribersRef.current.add(subscriber)
@@ -22,6 +34,46 @@ function Scene() {
     }
   }, [])
 
+  const registerClickable = useCallback((object, onClick) => {
+    if (!object || typeof onClick !== 'function') {
+      return () => {}
+    }
+
+    clickablesRef.current.set(object.uuid, { object, onClick })
+
+    return () => {
+      const current = clickablesRef.current.get(object.uuid)
+
+      if (current?.onClick === onClick) {
+        clickablesRef.current.delete(object.uuid)
+      }
+    }
+  }, [])
+
+  const togglePlayback = useCallback(() => {
+    if (!isPlayingRef.current && Tone.context.state !== 'running') {
+      void Tone.start().catch(() => undefined)
+    }
+
+    setIsPlaying((playing) => !playing)
+  }, [])
+
+  const switchArrangement = useCallback(() => {
+    if (arrangementIds.length < 2) {
+      return
+    }
+
+    setArrangementId((currentId) => {
+      const currentIndex = arrangementIds.indexOf(currentId)
+
+      if (currentIndex < 0) {
+        return arrangementIds[0]
+      }
+
+      return arrangementIds[(currentIndex + 1) % arrangementIds.length]
+    })
+  }, [arrangementIds])
+
   const sceneApi = useMemo(
     () => ({
       getScene: () => sceneStateRef.current?.scene ?? null,
@@ -29,13 +81,26 @@ function Scene() {
       getRenderer: () => sceneStateRef.current?.renderer ?? null,
       getPointer: () => sceneStateRef.current?.pointer ?? null,
       registerFrame,
+      registerClickable,
+      arrangementId,
+      isPlaying,
+      togglePlayback,
+      switchArrangement,
     }),
-    [registerFrame],
+    [
+      arrangementId,
+      isPlaying,
+      registerClickable,
+      registerFrame,
+      switchArrangement,
+      togglePlayback,
+    ],
   )
 
   useEffect(() => {
     const mountElement = mountRef.current
     const frameSubscribers = frameSubscribersRef.current
+    const clickables = clickablesRef.current
 
     if (!mountElement) {
       return undefined
@@ -77,6 +142,8 @@ function Scene() {
     scene.add(ground)
 
     const pointer = new THREE.Vector2(0, 0)
+    const raycastPointer = new THREE.Vector2(0, 0)
+    const raycaster = new THREE.Raycaster()
     const clock = new THREE.Clock()
 
     sceneStateRef.current = {
@@ -100,6 +167,35 @@ function Scene() {
       pointer.set(0, 0)
     }
 
+    const handlePointerDown = (event) => {
+      if (clickables.size === 0) {
+        return
+      }
+
+      const bounds = mountElement.getBoundingClientRect()
+      raycastPointer.x = ((event.clientX - bounds.left) / bounds.width) * 2 - 1
+      raycastPointer.y = -((event.clientY - bounds.top) / bounds.height) * 2 + 1
+      raycaster.setFromCamera(raycastPointer, camera)
+
+      const targets = Array.from(clickables.values(), (entry) => entry.object)
+      const intersections = raycaster.intersectObjects(targets, true)
+
+      for (const intersection of intersections) {
+        let current = intersection.object
+
+        while (current) {
+          const entry = clickables.get(current.uuid)
+
+          if (entry) {
+            entry.onClick(intersection)
+            return
+          }
+
+          current = current.parent
+        }
+      }
+    }
+
     const handleResize = () => {
       const width = mountElement.clientWidth
       const height = mountElement.clientHeight
@@ -115,6 +211,7 @@ function Scene() {
 
     mountElement.addEventListener('pointermove', handlePointerMove)
     mountElement.addEventListener('pointerleave', handlePointerLeave)
+    mountElement.addEventListener('pointerdown', handlePointerDown)
 
     let rafId = 0
     const animate = () => {
@@ -137,6 +234,7 @@ function Scene() {
       resizeObserver.disconnect()
       mountElement.removeEventListener('pointermove', handlePointerMove)
       mountElement.removeEventListener('pointerleave', handlePointerLeave)
+      mountElement.removeEventListener('pointerdown', handlePointerDown)
 
       scene.remove(ground)
       ground.geometry.dispose()
@@ -147,6 +245,7 @@ function Scene() {
 
       sceneStateRef.current = null
       frameSubscribers.clear()
+      clickables.clear()
     }
   }, [])
 
@@ -158,6 +257,7 @@ function Scene() {
           <Fragment key={sceneToken}>
             <Lighting />
             <Particles />
+            <Trees />
             <CameraController />
             <AmbienceAudio />
           </Fragment>

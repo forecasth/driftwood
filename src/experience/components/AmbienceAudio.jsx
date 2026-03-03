@@ -1,49 +1,45 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { getArrangement } from '../audio/arrangements/index.js'
 import { createAudioEngine } from '../audio/engine.js'
+import { useSceneContext } from '../sceneContext.js'
 
 function AmbienceAudio() {
+  const { arrangementId, isPlaying } = useSceneContext()
+  const engineRef = useRef(null)
+
   useEffect(() => {
-    const arrangement = getArrangement()
+    const arrangement = getArrangement(arrangementId)
 
     if (!arrangement) {
       return undefined
     }
 
     const engine = createAudioEngine(arrangement)
-    let disposed = false
-    let started = false
-
-    const removeGestureListeners = () => {
-      window.removeEventListener('pointerdown', handleGesture)
-      window.removeEventListener('keydown', handleGesture)
-    }
-
-    // Browsers require a user gesture before audio can start.
-    const handleGesture = async () => {
-      if (started || disposed) {
-        return
-      }
-
-      started = true
-
-      try {
-        await engine.start()
-        removeGestureListeners()
-      } catch {
-        started = false
-      }
-    }
-
-    window.addEventListener('pointerdown', handleGesture, { passive: true })
-    window.addEventListener('keydown', handleGesture)
+    engineRef.current = engine
 
     return () => {
-      disposed = true
-      removeGestureListeners()
+      if (engineRef.current === engine) {
+        engineRef.current = null
+      }
       engine.dispose()
     }
-  }, [])
+  }, [arrangementId])
+
+  useEffect(() => {
+    const engine = engineRef.current
+
+    if (!engine) {
+      return undefined
+    }
+
+    if (isPlaying) {
+      engine.start().catch(() => undefined)
+    } else {
+      engine.pause()
+    }
+
+    return undefined
+  }, [arrangementId, isPlaying])
 
   return null
 }

@@ -10,6 +10,7 @@ export function createArrangement({
   transport = {},
   tracks = {},
   ambience = {},
+  instruments = {},
 }) {
   if (!id) {
     throw new Error('Arrangement requires an id')
@@ -23,5 +24,6 @@ export function createArrangement({
     },
     tracks,
     ambience,
+    instruments,
   }
 }
