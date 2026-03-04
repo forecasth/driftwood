@@ -6,9 +6,10 @@ import AmbienceAudio from './components/AmbienceAudio.jsx'
 import CameraController from './components/CameraController.jsx'
 import Lighting from './components/Lighting.jsx'
 import Particles from './components/Particles.jsx'
+import SkyDial from './components/SkyDial.jsx'
 import Trees from './components/Trees.jsx'
+import { getSystemDayProgress, sampleDayCycle, wrapDayProgress } from './dayCycle.js'
 import { SceneContext } from './sceneContext.js'
-import { palette } from './theme.js'
 import './Scene.css'
 
 function Scene() {
@@ -20,7 +21,23 @@ function Scene() {
   const arrangementIds = useMemo(() => listArrangements(), [])
   const [arrangementId, setArrangementId] = useState(defaultArrangementId)
   const [isPlaying, setIsPlaying] = useState(false)
+  const [dayProgress, setDayProgressState] = useState(() => getSystemDayProgress())
+  const [isSystemTimeEnabled, setIsSystemTimeEnabled] = useState(true)
   const [sceneToken, setSceneToken] = useState(0)
+  const dayCycle = useMemo(() => sampleDayCycle(dayProgress), [dayProgress])
+
+  const shellStyle = useMemo(
+    () => ({
+      '--sky-top': dayCycle.skyTop,
+      '--sky-mid': dayCycle.skyMid,
+      '--sky-bottom': dayCycle.skyBottom,
+      '--sky-glow': dayCycle.skyGlow,
+      '--sky-shadow': dayCycle.skyShadow,
+      '--sky-glow-x': dayCycle.skyGlowX,
+      '--sky-glow-y': dayCycle.skyGlowY,
+    }),
+    [dayCycle],
+  )
 
   useEffect(() => {
     isPlayingRef.current = isPlaying
@@ -50,6 +67,11 @@ function Scene() {
     }
   }, [])
 
+  const getScene = useCallback(() => sceneStateRef.current?.scene ?? null, [])
+  const getCamera = useCallback(() => sceneStateRef.current?.camera ?? null, [])
+  const getRenderer = useCallback(() => sceneStateRef.current?.renderer ?? null, [])
+  const getPointer = useCallback(() => sceneStateRef.current?.pointer ?? null, [])
+
   const togglePlayback = useCallback(() => {
     if (!isPlayingRef.current && Tone.context.state !== 'running') {
       void Tone.start().catch(() => undefined)
@@ -57,6 +79,38 @@ function Scene() {
 
     setIsPlaying((playing) => !playing)
   }, [])
+
+  const setDayProgress = useCallback((nextProgress) => {
+    setIsSystemTimeEnabled(false)
+
+    setDayProgressState((current) => {
+      const value =
+        typeof nextProgress === 'function' ? nextProgress(current) : nextProgress
+
+      if (!Number.isFinite(value)) {
+        return current
+      }
+
+      return wrapDayProgress(value)
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!isSystemTimeEnabled) {
+      return undefined
+    }
+
+    const syncToClock = () => {
+      setDayProgressState(getSystemDayProgress())
+    }
+
+    syncToClock()
+    const intervalId = window.setInterval(syncToClock, 30000)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [isSystemTimeEnabled])
 
   const switchArrangement = useCallback(() => {
     if (arrangementIds.length < 2) {
@@ -76,22 +130,34 @@ function Scene() {
 
   const sceneApi = useMemo(
     () => ({
-      getScene: () => sceneStateRef.current?.scene ?? null,
-      getCamera: () => sceneStateRef.current?.camera ?? null,
-      getRenderer: () => sceneStateRef.current?.renderer ?? null,
-      getPointer: () => sceneStateRef.current?.pointer ?? null,
+      getScene,
+      getCamera,
+      getRenderer,
+      getPointer,
       registerFrame,
       registerClickable,
       arrangementId,
       isPlaying,
+      dayProgress,
+      dayCycle,
+      isSystemTimeEnabled,
+      setDayProgress,
       togglePlayback,
       switchArrangement,
     }),
     [
       arrangementId,
+      dayCycle,
+      dayProgress,
+      getCamera,
+      getPointer,
+      getRenderer,
+      getScene,
+      isSystemTimeEnabled,
       isPlaying,
       registerClickable,
       registerFrame,
+      setDayProgress,
       switchArrangement,
       togglePlayback,
     ],
@@ -106,8 +172,9 @@ function Scene() {
       return undefined
     }
 
+    const initialCycle = sampleDayCycle(getSystemDayProgress())
     const scene = new THREE.Scene()
-    scene.fog = new THREE.FogExp2(palette.fog, 0.032)
+    scene.fog = new THREE.FogExp2(initialCycle.fog, initialCycle.fogDensity)
 
     const camera = new THREE.PerspectiveCamera(
       44,
@@ -120,22 +187,23 @@ function Scene() {
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 0.56
+    renderer.toneMappingExposure = initialCycle.exposure
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.8))
     renderer.setSize(mountElement.clientWidth, mountElement.clientHeight)
     renderer.setClearAlpha(0)
     renderer.domElement.classList.add('scene-canvas')
     mountElement.appendChild(renderer.domElement)
 
+    const groundMaterial = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(initialCycle.ground),
+      roughness: 0.96,
+      metalness: 0.02,
+      transparent: true,
+      opacity: initialCycle.groundOpacity,
+    })
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(120, 120, 1, 1),
-      new THREE.MeshStandardMaterial({
-        color: new THREE.Color(palette.ground),
-        roughness: 0.96,
-        metalness: 0.02,
-        transparent: true,
-        opacity: 0.88,
-      }),
+      groundMaterial,
     )
     ground.rotation.x = -Math.PI / 2
     ground.position.y = -1.28
@@ -151,6 +219,7 @@ function Scene() {
       camera,
       renderer,
       pointer,
+      groundMaterial,
     }
 
     const readyAnimationFrame = window.requestAnimationFrame(() => {
@@ -238,7 +307,7 @@ function Scene() {
 
       scene.remove(ground)
       ground.geometry.dispose()
-      ground.material.dispose()
+      groundMaterial.dispose()
 
       renderer.dispose()
       mountElement.removeChild(renderer.domElement)
@@ -249,13 +318,34 @@ function Scene() {
     }
   }, [])
 
+  useEffect(() => {
+    const state = sceneStateRef.current
+
+    if (!state) {
+      return
+    }
+
+    const { scene, renderer, groundMaterial } = state
+    const fog = scene.fog
+
+    if (fog) {
+      fog.color.set(dayCycle.fog)
+      fog.density = dayCycle.fogDensity
+    }
+
+    groundMaterial.color.set(dayCycle.ground)
+    groundMaterial.opacity = dayCycle.groundOpacity
+    renderer.toneMappingExposure = dayCycle.exposure
+  }, [dayCycle])
+
   return (
-    <div className="scene-shell">
+    <div className="scene-shell" style={shellStyle}>
       <div className="scene-mount" ref={mountRef} />
       <SceneContext.Provider value={sceneApi}>
         {sceneToken > 0 ? (
           <Fragment key={sceneToken}>
             <Lighting />
+            <SkyDial />
             <Particles />
             <Trees />
             <CameraController />

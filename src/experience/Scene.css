@@ -1,4 +1,12 @@
 .scene-shell {
+  --sky-top: #0b1113;
+  --sky-mid: #15231f;
+  --sky-bottom: #1c2b35;
+  --sky-glow: rgba(138, 111, 67, 0.19);
+  --sky-shadow: rgba(15, 23, 21, 0.3);
+  --sky-glow-x: 76%;
+  --sky-glow-y: 36%;
+
   position: fixed;
   inset: 0;
   overflow: hidden;
@@ -16,13 +24,13 @@
   inset: -22%;
   background:
     radial-gradient(
-      50% 42% at 76% 36%,
-      rgba(138, 111, 67, 0.19) 0%,
+      50% 42% at var(--sky-glow-x) var(--sky-glow-y),
+      var(--sky-glow) 0%,
       transparent 72%
     ),
     radial-gradient(
       60% 54% at 24% 78%,
-      rgba(15, 23, 21, 0.3) 0%,
+      var(--sky-shadow) 0%,
       transparent 74%
     );
   filter: blur(22px);

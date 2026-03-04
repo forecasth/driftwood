@@ -1,7 +1,6 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { useSceneContext } from '../sceneContext.js'
-import { palette } from '../theme.js'
 
 const PARTICLE_COUNT = 96
 const X_RANGE = 18
@@ -14,7 +13,8 @@ function randomRange(min, max) {
 }
 
 function Particles() {
-  const { getScene, registerFrame } = useSceneContext()
+  const { getScene, registerFrame, dayCycle } = useSceneContext()
+  const materialRef = useRef(null)
 
   useEffect(() => {
     const scene = getScene()
@@ -65,7 +65,7 @@ function Particles() {
 
     const material = new THREE.ShaderMaterial({
       uniforms: {
-        uColor: { value: new THREE.Color(palette.particles) },
+        uColor: { value: new THREE.Color('#b0bbb9') },
       },
       vertexShader: `
         attribute float aSize;
@@ -95,6 +95,7 @@ function Particles() {
     })
 
     const points = new THREE.Points(geometry, material)
+    materialRef.current = material
     scene.add(points)
 
     const unsubscribe = registerFrame(({ delta, elapsed }) => {
@@ -128,11 +129,22 @@ function Particles() {
 
     return () => {
       unsubscribe()
+      materialRef.current = null
       scene.remove(points)
       geometry.dispose()
       material.dispose()
     }
   }, [getScene, registerFrame])
+
+  useEffect(() => {
+    const material = materialRef.current
+
+    if (!material) {
+      return
+    }
+
+    material.uniforms.uColor.value.set(dayCycle.particles)
+  }, [dayCycle.particles])
 
   return null
 }

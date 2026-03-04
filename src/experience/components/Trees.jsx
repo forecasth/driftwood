@@ -30,11 +30,16 @@ function createTree({
   lowerCrown.scale.set(crownRadius, crownHeight, crownRadius)
   lowerCrown.position.y = GROUND_LEVEL + trunkHeight + crownHeight * 0.44
 
+  const midCrown = new THREE.Mesh(crownGeometry, crownMaterial)
+  midCrown.scale.set(crownRadius * 0.85, crownHeight * 0.82, crownRadius * 0.85)
+  midCrown.position.y = GROUND_LEVEL + trunkHeight + crownHeight * 0.72
+  
   const upperCrown = new THREE.Mesh(crownGeometry, crownMaterial)
   upperCrown.scale.set(crownRadius * 0.72, crownHeight * 0.76, crownRadius * 0.72)
   upperCrown.position.y = GROUND_LEVEL + trunkHeight + crownHeight * 0.92
 
-  tree.add(trunk, lowerCrown, upperCrown)
+
+  tree.add(trunk, lowerCrown, midCrown, upperCrown)
   return tree
 }
 
