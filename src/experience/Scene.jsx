@@ -4,6 +4,7 @@ import * as Tone from 'tone'
 import { defaultArrangementId, listArrangements } from './audio/arrangements/index.js'
 import AmbienceAudio from './components/AmbienceAudio.jsx'
 import CameraController from './components/CameraController.jsx'
+import EntryStones from './components/EntryStones.jsx'
 import Lighting from './components/Lighting.jsx'
 import Particles from './components/Particles.jsx'
 import SkyDial from './components/SkyDial.jsx'
@@ -11,6 +12,12 @@ import Trees from './components/Trees.jsx'
 import { getSystemDayProgress, sampleDayCycle, wrapDayProgress } from './dayCycle.js'
 import { SceneContext } from './sceneContext.js'
 import './Scene.css'
+
+const GROUND_LEVEL = -1.28
+const CAMERA_ORBIT_RADIUS = 38
+const CAMERA_ORBIT_CENTER_Z = 8.4 + CAMERA_ORBIT_RADIUS
+const GROUND_RING_INNER_RADIUS = 24
+const GROUND_RING_OUTER_RADIUS = 78
 
 function Scene() {
   const mountRef = useRef(null)
@@ -71,6 +78,10 @@ function Scene() {
   const getCamera = useCallback(() => sceneStateRef.current?.camera ?? null, [])
   const getRenderer = useCallback(() => sceneStateRef.current?.renderer ?? null, [])
   const getPointer = useCallback(() => sceneStateRef.current?.pointer ?? null, [])
+  const getClickableObjects = useCallback(
+    () => Array.from(clickablesRef.current.values(), (entry) => entry.object),
+    [],
+  )
 
   const togglePlayback = useCallback(() => {
     if (!isPlayingRef.current && Tone.context.state !== 'running') {
@@ -134,6 +145,7 @@ function Scene() {
       getCamera,
       getRenderer,
       getPointer,
+      getClickableObjects,
       registerFrame,
       registerClickable,
       arrangementId,
@@ -153,6 +165,7 @@ function Scene() {
       getPointer,
       getRenderer,
       getScene,
+      getClickableObjects,
       isSystemTimeEnabled,
       isPlaying,
       registerClickable,
@@ -202,11 +215,16 @@ function Scene() {
       opacity: initialCycle.groundOpacity,
     })
     const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(120, 120, 1, 1),
+      new THREE.RingGeometry(
+        GROUND_RING_INNER_RADIUS,
+        GROUND_RING_OUTER_RADIUS,
+        320,
+        3,
+      ),
       groundMaterial,
     )
     ground.rotation.x = -Math.PI / 2
-    ground.position.y = -1.28
+    ground.position.set(0, GROUND_LEVEL, CAMERA_ORBIT_CENTER_Z)
     scene.add(ground)
 
     const pointer = new THREE.Vector2(0, 0)
@@ -347,6 +365,7 @@ function Scene() {
             <Lighting />
             <SkyDial />
             <Particles />
+            <EntryStones />
             <Trees />
             <CameraController />
             <AmbienceAudio />

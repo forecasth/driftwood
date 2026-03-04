@@ -4,10 +4,22 @@ import { useSceneContext } from '../sceneContext.js'
 import { palette } from '../theme.js'
 
 const GROUND_LEVEL = -1.28
-const TREE_COUNT = 58
+const TREE_COUNT = 220
+const CAMERA_ORBIT_RADIUS = 38
+const CAMERA_ORBIT_CENTER_X = 0
+const CAMERA_ORBIT_CENTER_Z = 8.4 + CAMERA_ORBIT_RADIUS
+const FOREST_INNER_RADIUS = CAMERA_ORBIT_RADIUS + 6
+const FOREST_OUTER_RADIUS = CAMERA_ORBIT_RADIUS + 32
+const ENTRY_CLEARING_CENTER_X = 0
+const ENTRY_CLEARING_CENTER_Z = -3.7
+const ENTRY_CLEARING_RADIUS = 8
 
 function randomRange(min, max) {
   return min + Math.random() * (max - min)
+}
+
+function randomRingRadius(innerRadius, outerRadius) {
+  return Math.sqrt(randomRange(innerRadius ** 2, outerRadius ** 2))
 }
 
 function createTree({
@@ -101,11 +113,22 @@ function Trees() {
       metalness: 0.04,
     })
 
-    for (let i = 0; i < TREE_COUNT; i += 1) {
-      const x = randomRange(-24, 24)
-      const z = randomRange(-52, -6)
+    let plantedTrees = 0
+    let attempts = 0
+    const maxAttempts = TREE_COUNT * 20
 
-      if (Math.abs(x) < 5.4 && z > -14) {
+    while (plantedTrees < TREE_COUNT && attempts < maxAttempts) {
+      attempts += 1
+
+      const angle = randomRange(0, Math.PI * 2)
+      const radius = randomRingRadius(FOREST_INNER_RADIUS, FOREST_OUTER_RADIUS)
+      const x = CAMERA_ORBIT_CENTER_X + Math.cos(angle) * radius
+      const z = CAMERA_ORBIT_CENTER_Z + Math.sin(angle) * radius
+
+      const entryDx = x - ENTRY_CLEARING_CENTER_X
+      const entryDz = z - ENTRY_CLEARING_CENTER_Z
+
+      if (entryDx * entryDx + entryDz * entryDz < ENTRY_CLEARING_RADIUS ** 2) {
         continue
       }
 
@@ -123,6 +146,7 @@ function Trees() {
       tree.position.set(x, 0, z)
       tree.rotation.y = randomRange(0, Math.PI * 2)
       treeGroup.add(tree)
+      plantedTrees += 1
     }
 
     const playTree = createTree({
