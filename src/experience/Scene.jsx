@@ -18,6 +18,16 @@ const CAMERA_ORBIT_RADIUS = 38
 const CAMERA_ORBIT_CENTER_Z = 8.4 + CAMERA_ORBIT_RADIUS
 const GROUND_RING_INNER_RADIUS = 44
 const GROUND_RING_OUTER_RADIUS = 78
+const CAMERA_SECTION_COUNT = 12
+
+function wrapSectionIndex(index, sectionCount) {
+  if (!Number.isFinite(index) || sectionCount <= 0) {
+    return 0
+  }
+
+  const roundedIndex = Math.round(index)
+  return ((roundedIndex % sectionCount) + sectionCount) % sectionCount
+}
 
 function Scene() {
   const mountRef = useRef(null)
@@ -31,6 +41,7 @@ function Scene() {
   const [dayProgress, setDayProgressState] = useState(() => getSystemDayProgress())
   const [isSystemTimeEnabled, setIsSystemTimeEnabled] = useState(true)
   const [sceneToken, setSceneToken] = useState(0)
+  const [sectionIndex, setSectionIndexState] = useState(0)
   const dayCycle = useMemo(() => sampleDayCycle(dayProgress), [dayProgress])
 
   const shellStyle = useMemo(
@@ -139,6 +150,35 @@ function Scene() {
     })
   }, [arrangementIds])
 
+  const setSectionIndex = useCallback((nextIndex) => {
+    setSectionIndexState((current) => {
+      const resolved =
+        typeof nextIndex === 'function' ? nextIndex(current) : nextIndex
+
+      if (!Number.isFinite(resolved)) {
+        return current
+      }
+
+      return wrapSectionIndex(resolved, CAMERA_SECTION_COUNT)
+    })
+  }, [])
+
+  const stepSection = useCallback((delta) => {
+    if (!Number.isFinite(delta)) {
+      return
+    }
+
+    const roundedDelta = Math.round(delta)
+
+    if (roundedDelta === 0) {
+      return
+    }
+
+    setSectionIndexState((current) =>
+      wrapSectionIndex(current + roundedDelta, CAMERA_SECTION_COUNT),
+    )
+  }, [])
+
   const sceneApi = useMemo(
     () => ({
       getScene,
@@ -156,6 +196,10 @@ function Scene() {
       setDayProgress,
       togglePlayback,
       switchArrangement,
+      sectionIndex,
+      sectionCount: CAMERA_SECTION_COUNT,
+      setSectionIndex,
+      stepSection,
     }),
     [
       arrangementId,
@@ -170,7 +214,10 @@ function Scene() {
       isPlaying,
       registerClickable,
       registerFrame,
+      sectionIndex,
+      setSectionIndex,
       setDayProgress,
+      stepSection,
       switchArrangement,
       togglePlayback,
     ],

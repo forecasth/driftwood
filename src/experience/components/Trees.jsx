@@ -8,11 +8,22 @@ const TREE_COUNT = 220
 const CAMERA_ORBIT_RADIUS = 38
 const CAMERA_ORBIT_CENTER_X = 0
 const CAMERA_ORBIT_CENTER_Z = 8.4 + CAMERA_ORBIT_RADIUS
+const DEFAULT_SECTION_COUNT = 12
 const FOREST_INNER_RADIUS = CAMERA_ORBIT_RADIUS + 12
 const FOREST_OUTER_RADIUS = CAMERA_ORBIT_RADIUS + 38
 const ENTRY_CLEARING_CENTER_X = 0
 const ENTRY_CLEARING_CENTER_Z = -3.7
 const ENTRY_CLEARING_RADIUS = 8
+const SECTION_SIGN_RADIUS = CAMERA_ORBIT_RADIUS + 18.5
+const SECTION_SIGN_SIDE_OFFSET = 8.1
+const SECTION_SIGN_HEIGHT = 0
+const SECTION_SIGN_FOCUS_Y = 0.56
+const SECTION_ARROW_CENTER_Y = GROUND_LEVEL + 0.94
+const SECTION_SIGN_PULSE_SPEED = 2.16
+const SECTION_SIGN_FACE_BASE = 0.42
+const SECTION_SIGN_FACE_PULSE = 0.78
+const SECTION_SIGN_EDGE_BASE = 0.74
+const SECTION_SIGN_EDGE_PULSE = 1.08
 const PLAY_LIGHT_PAUSED_COLOR = '#b8ff45'
 const PLAY_LIGHT_ACTIVE_COLOR = '#ffb24a'
 const ARRANGEMENT_LIGHT_AMBER = '#ffaf59'
@@ -169,6 +180,69 @@ function createTree({
   return tree
 }
 
+function createArrowSignShape() {
+  const shape = new THREE.Shape()
+  shape.moveTo(-1.24, 0.32)
+  shape.lineTo(0.2, 0.32)
+  shape.lineTo(0.2, 0.62)
+  shape.lineTo(1.08, 0)
+  shape.lineTo(0.2, -0.62)
+  shape.lineTo(0.2, -0.32)
+  shape.lineTo(-1.24, -0.32)
+  shape.lineTo(-1.24, 0.32)
+  return shape
+}
+
+function createArrowOmbreTexture() {
+  const canvas = document.createElement('canvas')
+  canvas.width = 256
+  canvas.height = 64
+  const context = canvas.getContext('2d')
+
+  if (context) {
+    const gradient = context.createLinearGradient(0, 0, canvas.width, 0)
+    gradient.addColorStop(0, '#8f4a13')
+    gradient.addColorStop(0.45, '#d2842e')
+    gradient.addColorStop(1, '#ffd188')
+    context.fillStyle = gradient
+    context.fillRect(0, 0, canvas.width, canvas.height)
+  }
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.wrapS = THREE.ClampToEdgeWrapping
+  texture.wrapT = THREE.ClampToEdgeWrapping
+  texture.minFilter = THREE.LinearFilter
+  texture.magFilter = THREE.LinearFilter
+  texture.generateMipmaps = false
+  return texture
+}
+
+function createSectionSign({
+  direction,
+  arrowGeometry,
+  edgeMaterial,
+  faceMaterial,
+}) {
+  const sign = new THREE.Group()
+
+  const arrowPivot = new THREE.Group()
+  arrowPivot.position.set(0, SECTION_ARROW_CENTER_Y, 0.18)
+  arrowPivot.scale.x = direction
+  sign.add(arrowPivot)
+
+  const edge = new THREE.Mesh(arrowGeometry, edgeMaterial)
+  edge.position.z = -0.02
+  edge.scale.set(1.12, 1.12, 1.08)
+  arrowPivot.add(edge)
+
+  const face = new THREE.Mesh(arrowGeometry, faceMaterial)
+  face.position.z = 0.015
+  arrowPivot.add(face)
+
+  return sign
+}
+
 function Trees() {
   const {
     getScene,
@@ -177,8 +251,11 @@ function Trees() {
     togglePlayback,
     switchArrangement,
     isPlaying,
+    sectionCount,
+    stepSection,
   } = useSceneContext()
   const isPlayingRef = useRef(isPlaying)
+  const safeSectionCount = Math.max(1, Math.round(sectionCount || DEFAULT_SECTION_COUNT))
 
   useEffect(() => {
     isPlayingRef.current = isPlaying
@@ -240,6 +317,37 @@ function Trees() {
     const arrangementTreeTrunkRadius = 0.16
     const arrangementTreeCrownHeight = 2.75
     const arrangementTreeCrownRadius = 1.12
+    const arrowShape = createArrowSignShape()
+    const arrowGeometry = new THREE.ExtrudeGeometry(arrowShape, {
+      depth: 0.14,
+      bevelEnabled: false,
+    })
+    arrowGeometry.center()
+    const arrowOmbreTexture = createArrowOmbreTexture()
+
+    const signFaceColorMin = new THREE.Color('#c57520')
+    const signFaceColorMax = new THREE.Color('#ffd48d')
+    const signFaceEmissiveMin = new THREE.Color('#6d3309')
+    const signFaceEmissiveMax = new THREE.Color('#f4a33f')
+    const signEdgeColorMin = new THREE.Color('#a65814')
+    const signEdgeColorMax = new THREE.Color('#ffca72')
+    const signEdgeEmissiveMin = new THREE.Color('#7a360a')
+    const signEdgeEmissiveMax = new THREE.Color('#ffaf4d')
+    const signFaceMaterial = new THREE.MeshStandardMaterial({
+      color: signFaceColorMin,
+      emissive: signFaceEmissiveMin,
+      emissiveIntensity: SECTION_SIGN_FACE_BASE,
+      map: arrowOmbreTexture,
+      roughness: 0.64,
+      metalness: 0.04,
+    })
+    const signEdgeMaterial = new THREE.MeshStandardMaterial({
+      color: signEdgeColorMin,
+      emissive: signEdgeEmissiveMin,
+      emissiveIntensity: SECTION_SIGN_EDGE_BASE,
+      roughness: 0.36,
+      metalness: 0.08,
+    })
 
     let plantedTrees = 0
     let attempts = 0
@@ -305,6 +413,59 @@ function Trees() {
     arrangementTree.rotation.y = 0.18
     treeGroup.add(arrangementTree)
 
+    const signUp = new THREE.Vector3(0, 1, 0)
+    const outward = new THREE.Vector3()
+    const lateral = new THREE.Vector3()
+    const focusTarget = new THREE.Vector3()
+    const targetMatrix = new THREE.Matrix4()
+    const targetQuaternion = new THREE.Quaternion()
+    const sectionSignUnsubscribers = []
+    const signSideConfigs = [
+      { side: -1, direction: 1, name: 'section-sign-left', sectionDelta: -1 },
+      { side: 1, direction: -1, name: 'section-sign-right', sectionDelta: 1 },
+    ]
+
+    for (let section = 0; section < safeSectionCount; section += 1) {
+      const sectionAngle = (section / safeSectionCount) * Math.PI * 2
+      outward.set(Math.sin(sectionAngle), 0, -Math.cos(sectionAngle))
+      lateral.set(Math.cos(sectionAngle), 0, Math.sin(sectionAngle))
+      focusTarget.set(
+        CAMERA_ORBIT_CENTER_X + outward.x * CAMERA_ORBIT_RADIUS,
+        SECTION_SIGN_FOCUS_Y,
+        CAMERA_ORBIT_CENTER_Z + outward.z * CAMERA_ORBIT_RADIUS,
+      )
+
+      signSideConfigs.forEach(({ side, direction, name, sectionDelta }) => {
+        const sectionSign = createSectionSign({
+          direction,
+          arrowGeometry,
+          edgeMaterial: signEdgeMaterial,
+          faceMaterial: signFaceMaterial,
+        })
+
+        sectionSign.name = `${name}-${section}`
+        sectionSign.position.set(
+          CAMERA_ORBIT_CENTER_X +
+            outward.x * SECTION_SIGN_RADIUS +
+            lateral.x * SECTION_SIGN_SIDE_OFFSET * side,
+          SECTION_SIGN_HEIGHT,
+          CAMERA_ORBIT_CENTER_Z +
+            outward.z * SECTION_SIGN_RADIUS +
+            lateral.z * SECTION_SIGN_SIDE_OFFSET * side,
+        )
+        targetMatrix.lookAt(sectionSign.position, focusTarget, signUp)
+        targetQuaternion.setFromRotationMatrix(targetMatrix)
+        sectionSign.quaternion.copy(targetQuaternion)
+        treeGroup.add(sectionSign)
+
+        sectionSignUnsubscribers.push(
+          registerClickable(sectionSign, () => {
+            stepSection(sectionDelta)
+          }),
+        )
+      })
+    }
+
     const playTreeLights = createGroundPulseLights({
       tree: playTree,
       color: PLAY_LIGHT_PAUSED_COLOR,
@@ -345,7 +506,6 @@ function Trees() {
       arrangementClickFlash.sequenceStart = null
       switchArrangement()
     })
-
     const unsubscribePulse = registerFrame(({ elapsed }) => {
       const playMode = isPlayingRef.current ? 'playing' : 'paused'
 
@@ -443,27 +603,54 @@ function Trees() {
         0.22 +
         Math.sin(elapsed * 1.05 + 1.4) * 0.04 +
         Math.max(arrangementStrength, arrangementClickStrength) * 0.2
+
+      const signPulse = 0.5 + Math.sin(elapsed * SECTION_SIGN_PULSE_SPEED) * 0.5
+      signFaceMaterial.color.lerpColors(signFaceColorMin, signFaceColorMax, signPulse)
+      signFaceMaterial.emissive.lerpColors(
+        signFaceEmissiveMin,
+        signFaceEmissiveMax,
+        signPulse,
+      )
+      signFaceMaterial.emissiveIntensity =
+        SECTION_SIGN_FACE_BASE + signPulse * SECTION_SIGN_FACE_PULSE
+      signEdgeMaterial.color.lerpColors(signEdgeColorMin, signEdgeColorMax, signPulse)
+      signEdgeMaterial.emissive.lerpColors(
+        signEdgeEmissiveMin,
+        signEdgeEmissiveMax,
+        signPulse,
+      )
+      signEdgeMaterial.emissiveIntensity =
+        SECTION_SIGN_EDGE_BASE + signPulse * SECTION_SIGN_EDGE_PULSE
     })
 
     return () => {
       unregisterPlay()
       unregisterArrangement()
+      sectionSignUnsubscribers.forEach((unregister) => {
+        unregister()
+      })
       unsubscribePulse()
 
       scene.remove(treeGroup)
 
       trunkGeometry.dispose()
       crownGeometry.dispose()
+      arrowGeometry.dispose()
+      arrowOmbreTexture.dispose()
       darkTrunkMaterial.dispose()
       darkCrownMaterial.dispose()
       amberTrunkMaterial.dispose()
       playTreeMaterial.dispose()
       arrangementTreeMaterial.dispose()
+      signFaceMaterial.dispose()
+      signEdgeMaterial.dispose()
     }
   }, [
     getScene,
     registerClickable,
     registerFrame,
+    safeSectionCount,
+    stepSection,
     switchArrangement,
     togglePlayback,
   ])

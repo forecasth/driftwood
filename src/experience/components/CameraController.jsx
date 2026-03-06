@@ -1,13 +1,15 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { useSceneContext } from '../sceneContext.js'
 
 const basePosition = new THREE.Vector3(0, 1.7, 8.4)
 const ORBIT_RADIUS = 38
 const ORBIT_CENTER = new THREE.Vector3(0, basePosition.y, basePosition.z + ORBIT_RADIUS)
-const DRAG_SENSITIVITY = 0.00135
+const TAU = Math.PI * 2
+const DRAG_SECTION_DISTANCE = 90
 const DRAG_DIRECTION = -1
 const LOOK_DISTANCE = 14
+const SECTION_TRANSITION_DAMP = 1.85
 
 const targetPosition = new THREE.Vector3()
 const lookTarget = new THREE.Vector3()
@@ -22,6 +24,50 @@ function toRayPointer(event, element, result) {
   result.y = -((event.clientY - bounds.top) / bounds.height) * 2 + 1
 }
 
+function wrapSectionIndex(index, sectionCount) {
+  const rounded = Math.round(index)
+  return ((rounded % sectionCount) + sectionCount) % sectionCount
+}
+
+function getSectionDragOffset(dragDistance) {
+  const normalized = dragDistance / DRAG_SECTION_DISTANCE
+
+  if (normalized > 0) {
+    return Math.floor(normalized)
+  }
+
+  if (normalized < 0) {
+    return Math.ceil(normalized)
+  }
+
+  return 0
+}
+
+function resolveNearestStep(wrappedSection, referenceStep, sectionCount) {
+  const wrapOffset = Math.round((referenceStep - wrappedSection) / sectionCount)
+  const candidateA = wrappedSection + wrapOffset * sectionCount
+  const candidateB = candidateA + sectionCount
+  const candidateC = candidateA - sectionCount
+
+  let nearest = candidateA
+  let nearestDistance = Math.abs(candidateA - referenceStep)
+
+  const distanceB = Math.abs(candidateB - referenceStep)
+
+  if (distanceB < nearestDistance) {
+    nearest = candidateB
+    nearestDistance = distanceB
+  }
+
+  const distanceC = Math.abs(candidateC - referenceStep)
+
+  if (distanceC < nearestDistance) {
+    nearest = candidateC
+  }
+
+  return nearest
+}
+
 function CameraController() {
   const {
     getCamera,
@@ -30,7 +76,16 @@ function CameraController() {
     getPointer,
     getClickableObjects,
     registerFrame,
+    sectionIndex,
+    sectionCount,
+    stepSection,
   } = useSceneContext()
+  const sectionIndexRef = useRef(sectionIndex)
+  const safeSectionCount = Math.max(1, Math.round(sectionCount || 1))
+
+  useEffect(() => {
+    sectionIndexRef.current = sectionIndex
+  }, [sectionIndex])
 
   useEffect(() => {
     const camera = getCamera()
@@ -41,10 +96,22 @@ function CameraController() {
       return undefined
     }
 
+    const initialWrappedSection = wrapSectionIndex(
+      sectionIndexRef.current || 0,
+      safeSectionCount,
+    )
+    const sectionAngle = TAU / safeSectionCount
     const smoothPointer = new THREE.Vector2(0, 0)
     const smoothedPosition = camera.position.clone()
-    const orbitAngleState = { current: 0, target: 0 }
-    const dragState = { pointerId: null, startX: 0, startAngle: 0 }
+    const sectionStepState = {
+      wrapped: initialWrappedSection,
+      target: initialWrappedSection,
+    }
+    const orbitAngleState = {
+      current: initialWrappedSection * sectionAngle,
+      target: initialWrappedSection * sectionAngle,
+    }
+    const dragState = { pointerId: null, anchorX: 0 }
     const canvasElement = renderer.domElement
 
     const isInteractivePointerDown = (event) => {
@@ -87,8 +154,7 @@ function CameraController() {
       }
 
       dragState.pointerId = event.pointerId
-      dragState.startX = event.clientX
-      dragState.startAngle = orbitAngleState.target
+      dragState.anchorX = event.clientX
       canvasElement.setPointerCapture(event.pointerId)
       canvasElement.style.cursor = 'grabbing'
       event.preventDefault()
@@ -99,9 +165,19 @@ function CameraController() {
         return
       }
 
-      const dragDistance = event.clientX - dragState.startX
-      orbitAngleState.target =
-        dragState.startAngle + dragDistance * DRAG_SENSITIVITY * DRAG_DIRECTION
+      const dragDistance = event.clientX - dragState.anchorX
+      const stepOffset = getSectionDragOffset(dragDistance)
+
+      if (stepOffset !== 0) {
+        const stepDelta = stepOffset > 0 ? DRAG_DIRECTION : -DRAG_DIRECTION
+        sectionIndexRef.current = wrapSectionIndex(
+          sectionIndexRef.current + stepDelta,
+          safeSectionCount,
+        )
+        stepSection(stepDelta)
+        dragState.anchorX = event.clientX
+      }
+
       event.preventDefault()
     }
 
@@ -132,11 +208,26 @@ function CameraController() {
         return
       }
 
+      const requestedWrappedSection = wrapSectionIndex(
+        sectionIndexRef.current || 0,
+        safeSectionCount,
+      )
+
+      if (requestedWrappedSection !== sectionStepState.wrapped) {
+        sectionStepState.target = resolveNearestStep(
+          requestedWrappedSection,
+          sectionStepState.target,
+          safeSectionCount,
+        )
+        sectionStepState.wrapped = requestedWrappedSection
+      }
+
+      orbitAngleState.target = sectionStepState.target * sectionAngle
       smoothPointer.lerp(pointer, 0.045)
       orbitAngleState.current = THREE.MathUtils.damp(
         orbitAngleState.current,
         orbitAngleState.target,
-        dragState.pointerId === null ? 3.8 : 11,
+        SECTION_TRANSITION_DAMP,
         delta,
       )
 
@@ -173,7 +264,16 @@ function CameraController() {
       canvasElement.removeEventListener('pointercancel', handlePointerRelease)
       canvasElement.style.cursor = ''
     }
-  }, [getCamera, getClickableObjects, getPointer, getRenderer, getScene, registerFrame])
+  }, [
+    getCamera,
+    getClickableObjects,
+    getPointer,
+    getRenderer,
+    getScene,
+    registerFrame,
+    safeSectionCount,
+    stepSection,
+  ])
 
   return null
 }
