@@ -1,10 +1,10 @@
 import './App.css'
-import Scene from './experience/Scene.jsx'
+import SceneRoot from './components/world/SceneRoot.jsx'
 
 function App() {
   return (
     <main className="app-shell">
-      <Scene />
+      <SceneRoot />
     </main>
   )
 }

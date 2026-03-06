@@ -1,0 +1,65 @@
+.scene-shell {
+  --sky-top: #0b1113;
+  --sky-mid: #15231f;
+  --sky-bottom: #1c2b35;
+  --sky-glow: rgba(138, 111, 67, 0.19);
+  --sky-shadow: rgba(15, 23, 21, 0.3);
+  --sky-glow-x: 76%;
+  --sky-glow-y: 36%;
+
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(
+      80% 76% at 50% 100%,
+      rgba(7, 9, 10, 0.34) 0%,
+      transparent 64%
+    ),
+    linear-gradient(
+      180deg,
+      var(--sky-top) 0%,
+      var(--sky-mid) 46%,
+      var(--sky-bottom) 100%
+    );
+}
+
+.scene-shell::before {
+  content: '';
+  position: absolute;
+  inset: -22%;
+  background:
+    radial-gradient(
+      50% 42% at var(--sky-glow-x) var(--sky-glow-y),
+      var(--sky-glow) 0%,
+      transparent 72%
+    ),
+    radial-gradient(
+      60% 54% at 24% 78%,
+      var(--sky-shadow) 0%,
+      transparent 74%
+    );
+  filter: blur(24px);
+  pointer-events: none;
+}
+
+.scene-shell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(6, 8, 8, 0.08), transparent 22%),
+    linear-gradient(0deg, rgba(5, 6, 7, 0.32), transparent 32%);
+  pointer-events: none;
+}
+
+.scene-mount {
+  position: absolute;
+  inset: 0;
+}
+
+.scene-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
