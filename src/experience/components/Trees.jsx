@@ -28,15 +28,18 @@ const PLAY_LIGHT_PAUSED_COLOR = '#b8ff45'
 const PLAY_LIGHT_ACTIVE_COLOR = '#ffb24a'
 const ARRANGEMENT_LIGHT_AMBER = '#ffaf59'
 const ARRANGEMENT_LIGHT_MAGENTA = '#df42ff'
-const PLAY_LIGHT_INTERVAL_MIN = 10
-const PLAY_LIGHT_INTERVAL_MAX = 15
-const ARRANGEMENT_LIGHT_INTERVAL_MIN = 5
-const ARRANGEMENT_LIGHT_INTERVAL_MAX = 7
-const BLINK_PULSE_DURATION = 0.34
-const BLINK_PULSE_GAP = 0.16
-const PLAY_LIGHT_INTENSITY = 2.4
-const ARRANGEMENT_LIGHT_INTENSITY = 2.2
-const ARRANGEMENT_CLICK_INTENSITY = 2.7
+const PLAY_PARTICLE_COUNT = 18
+const ARRANGEMENT_PARTICLE_COUNT = 20
+const PARTICLE_BASE_OPACITY = 0.46
+const PARTICLE_OPACITY_SWING = 0.24
+const PLAY_PARTICLE_ACTIVITY_PAUSED = 0.58
+const PLAY_PARTICLE_ACTIVITY_PLAYING = 0.92
+const ARRANGEMENT_PARTICLE_ACTIVITY_PAUSED = 0.52
+const ARRANGEMENT_PARTICLE_ACTIVITY_PLAYING = 0.78
+const PARTICLE_COLOR_LERP = 0.12
+const ARRANGEMENT_CLICK_FLASH_DURATION = 0.88
+const PARTICLE_RADIUS_MIN_MULTIPLIER = 1.14
+const PARTICLE_RADIUS_MAX_MULTIPLIER = 1.46
 
 function randomRange(min, max) {
   return min + Math.random() * (max - min)
@@ -46,106 +49,166 @@ function randomRingRadius(innerRadius, outerRadius) {
   return Math.sqrt(randomRange(innerRadius ** 2, outerRadius ** 2))
 }
 
-function getSequenceDuration(pulseCount, pulseDuration, pulseGap) {
-  return pulseCount * pulseDuration + (pulseCount - 1) * pulseGap
+function createGlowSpriteTexture() {
+  const canvas = document.createElement('canvas')
+  canvas.width = 128
+  canvas.height = 128
+  const context = canvas.getContext('2d')
+
+  if (context) {
+    const center = canvas.width * 0.5
+    const gradient = context.createRadialGradient(
+      center,
+      center,
+      0,
+      center,
+      center,
+      center,
+    )
+    gradient.addColorStop(0, 'rgba(255,255,255,1)')
+    gradient.addColorStop(0.22, 'rgba(255,246,224,0.96)')
+    gradient.addColorStop(0.56, 'rgba(255,201,125,0.42)')
+    gradient.addColorStop(1, 'rgba(255,148,80,0)')
+    context.fillStyle = gradient
+    context.fillRect(0, 0, canvas.width, canvas.height)
+  }
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.wrapS = THREE.ClampToEdgeWrapping
+  texture.wrapT = THREE.ClampToEdgeWrapping
+  texture.minFilter = THREE.LinearFilter
+  texture.magFilter = THREE.LinearFilter
+  texture.generateMipmaps = false
+  return texture
 }
 
-function getPulseStrength(normalizedTime) {
-  if (normalizedTime <= 0 || normalizedTime >= 1) {
-    return 0
-  }
-
-  const wave = Math.sin(normalizedTime * Math.PI)
-  return wave * wave
-}
-
-function getSequenceStrength(elapsed, sequenceStart, pulseCount, pulseDuration, pulseGap) {
-  if (sequenceStart === null) {
-    return 0
-  }
-
-  const sinceStart = elapsed - sequenceStart
-  const duration = getSequenceDuration(pulseCount, pulseDuration, pulseGap)
-
-  if (sinceStart < 0 || sinceStart > duration) {
-    return 0
-  }
-
-  let strongestPulse = 0
-
-  for (let pulseIndex = 0; pulseIndex < pulseCount; pulseIndex += 1) {
-    const pulseStart = pulseIndex * (pulseDuration + pulseGap)
-    const normalizedTime = (sinceStart - pulseStart) / pulseDuration
-    strongestPulse = Math.max(strongestPulse, getPulseStrength(normalizedTime))
-  }
-
-  return strongestPulse
-}
-
-function updateScheduledBlink(elapsed, scheduler, config) {
-  const { intervalMin, intervalMax, pulseCount, pulseDuration, pulseGap } = config
-  const duration = getSequenceDuration(pulseCount, pulseDuration, pulseGap)
-
-  if (
-    scheduler.sequenceStart !== null &&
-    elapsed - scheduler.sequenceStart > duration
-  ) {
-    scheduler.sequenceStart = null
-    scheduler.nextStart = elapsed + randomRange(intervalMin, intervalMax)
-  }
-
-  if (scheduler.sequenceStart === null && elapsed >= scheduler.nextStart) {
-    scheduler.sequenceStart = elapsed
-  }
-
-  return getSequenceStrength(
-    elapsed,
-    scheduler.sequenceStart,
-    pulseCount,
-    pulseDuration,
-    pulseGap,
-  )
-}
-
-function createGroundPulseLights({
+function createTreeParticleSwarm({
   tree,
+  texture,
   color,
+  particleCount,
   trunkHeight,
   crownHeight,
   crownRadius,
 }) {
-  const ringLights = []
-  const ringLightCount = 6
-  const ringRadius = crownRadius * 0.96
-  const ringHeight = GROUND_LEVEL + trunkHeight - crownHeight * 0.03
+  const material = new THREE.SpriteMaterial({
+    map: texture,
+    color: new THREE.Color(color),
+    transparent: true,
+    opacity: PARTICLE_BASE_OPACITY,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  })
+  const swarmGroup = new THREE.Group()
+  const particles = []
+  const yMin = GROUND_LEVEL + 0.26
+  const yMax = GROUND_LEVEL + trunkHeight + crownHeight * 1.08
+  const ySpan = Math.max(0.1, yMax - yMin)
 
-  for (let lightIndex = 0; lightIndex < ringLightCount; lightIndex += 1) {
-    const angle = (lightIndex / ringLightCount) * Math.PI * 2
-    const x = Math.cos(angle) * ringRadius
-    const z = Math.sin(angle) * ringRadius
-    const beam = new THREE.SpotLight(color, 0, 6.9, Math.PI * 0.5, 1, 2.2)
-    const target = new THREE.Object3D()
+  for (let particleIndex = 0; particleIndex < particleCount; particleIndex += 1) {
+    const sprite = new THREE.Sprite(material)
+    const baseScale = randomRange(0.18, 0.38)
+    const orbitAngle = randomRange(0, Math.PI * 2)
+    const orbitSpeed = randomRange(0.4, 0.9) * (Math.random() < 0.5 ? -1 : 1)
+    const radiusAnchor =
+      crownRadius *
+      randomRange(PARTICLE_RADIUS_MIN_MULTIPLIER, PARTICLE_RADIUS_MAX_MULTIPLIER)
+    const radialAmplitude = crownRadius * randomRange(0.015, 0.05)
+    const radialPhase = randomRange(0, Math.PI * 2)
+    const radialSpeed = randomRange(0.5, 1.32)
+    const heightRatio = randomRange(0.04, 0.96)
+    const bobAmplitude = randomRange(0.08, 0.26)
+    const bobPhase = randomRange(0, Math.PI * 2)
+    const bobSpeed = randomRange(0.58, 1.44)
+    const twinklePhase = randomRange(0, Math.PI * 2)
+    const twinkleSpeed = randomRange(3.6, 7.8)
+    const wavePhase = randomRange(0, Math.PI * 2)
 
-    beam.position.set(x, ringHeight, z)
-    target.position.set(x * 0.35, GROUND_LEVEL + 0.02, z * 0.35)
-    tree.add(beam)
-    tree.add(target)
-    beam.target = target
-
-    ringLights.push({
-      beam,
-      intensityScale: 0.88 + Math.sin(angle * 3 + 0.4) * 0.12,
+    sprite.scale.setScalar(baseScale)
+    swarmGroup.add(sprite)
+    particles.push({
+      sprite,
+      baseScale,
+      orbitAngle,
+      orbitSpeed,
+      radiusAnchor,
+      radialAmplitude,
+      radialPhase,
+      radialSpeed,
+      yMin,
+      ySpan,
+      heightRatio,
+      bobAmplitude,
+      bobPhase,
+      bobSpeed,
+      twinklePhase,
+      twinkleSpeed,
+      wavePhase,
     })
   }
 
-  return ringLights
+  tree.add(swarmGroup)
+  return { group: swarmGroup, material, particles }
 }
 
-function setLightRig(lights, color, intensity) {
-  lights.forEach(({ beam, intensityScale }) => {
-    beam.color.set(color)
-    beam.intensity = intensity * intensityScale
+function updateTreeParticleSwarm(
+  swarm,
+  elapsed,
+  delta,
+  activity,
+  options = {},
+) {
+  const {
+    speedScale = 1,
+    waveAmplitude = 0,
+    waveFrequency = 1.9,
+    waveSpeedScale = 1,
+  } = options
+  const safeDelta = Math.min(Math.max(delta, 0), 0.05)
+  const motionBoost = (0.72 + activity * 0.58) * speedScale
+  const scaleBoost = 0.86 + activity * 0.34
+
+  swarm.particles.forEach((particle) => {
+    particle.orbitAngle += safeDelta * particle.orbitSpeed * motionBoost
+    particle.radialPhase += safeDelta * particle.radialSpeed * (0.86 + activity * 0.32)
+    particle.bobPhase += safeDelta * particle.bobSpeed * waveSpeedScale
+    particle.twinklePhase += safeDelta * particle.twinkleSpeed
+
+    const radius =
+      particle.radiusAnchor +
+      Math.sin(particle.radialPhase) * particle.radialAmplitude
+    const waveY =
+      Math.sin(elapsed * waveFrequency + particle.wavePhase) * waveAmplitude
+    const unclampedY =
+      particle.yMin +
+      particle.ySpan * particle.heightRatio +
+      Math.sin(particle.bobPhase) * particle.bobAmplitude +
+      waveY
+    const y = Math.min(
+      particle.yMin + particle.ySpan,
+      Math.max(particle.yMin, unclampedY),
+    )
+    const twinkle =
+      0.78 + Math.sin(particle.twinklePhase) * 0.22
+    const scale = particle.baseScale * twinkle * scaleBoost
+
+    particle.sprite.position.set(
+      Math.cos(particle.orbitAngle) * radius,
+      y,
+      Math.sin(particle.orbitAngle) * radius,
+    )
+    particle.sprite.scale.setScalar(scale)
   })
+}
+
+function setTreeParticleSwarmAppearance(swarm, color, opacity) {
+  swarm.material.color.copy(color)
+  swarm.material.opacity = opacity
+}
+
+function disposeTreeParticleSwarm(swarm) {
+  swarm.material.dispose()
 }
 
 function createTree({
@@ -466,36 +529,35 @@ function Trees() {
       })
     }
 
-    const playTreeLights = createGroundPulseLights({
+    const glowParticleTexture = createGlowSpriteTexture()
+    const playTreeParticles = createTreeParticleSwarm({
       tree: playTree,
+      texture: glowParticleTexture,
       color: PLAY_LIGHT_PAUSED_COLOR,
+      particleCount: PLAY_PARTICLE_COUNT,
       trunkHeight: playTreeTrunkHeight,
       crownHeight: playTreeCrownHeight,
       crownRadius: playTreeCrownRadius,
     })
-    const arrangementTreeLights = createGroundPulseLights({
+    const arrangementTreeParticles = createTreeParticleSwarm({
       tree: arrangementTree,
+      texture: glowParticleTexture,
       color: ARRANGEMENT_LIGHT_AMBER,
+      particleCount: ARRANGEMENT_PARTICLE_COUNT,
       trunkHeight: arrangementTreeTrunkHeight,
       crownHeight: arrangementTreeCrownHeight,
       crownRadius: arrangementTreeCrownRadius,
     })
 
-    const playBlinkScheduler = {
-      mode: isPlayingRef.current ? 'playing' : 'paused',
-      nextStart: randomRange(PLAY_LIGHT_INTERVAL_MIN, PLAY_LIGHT_INTERVAL_MAX),
-      sequenceStart: null,
-    }
-    const arrangementBlinkScheduler = {
-      nextStart: randomRange(
-        ARRANGEMENT_LIGHT_INTERVAL_MIN,
-        ARRANGEMENT_LIGHT_INTERVAL_MAX,
-      ),
-      sequenceStart: null,
-    }
+    const playParticleColor = new THREE.Color(PLAY_LIGHT_PAUSED_COLOR)
+    const playParticleTargetColor = new THREE.Color(PLAY_LIGHT_PAUSED_COLOR)
+    const arrangementAmberColor = new THREE.Color(ARRANGEMENT_LIGHT_AMBER)
+    const arrangementMagentaColor = new THREE.Color(ARRANGEMENT_LIGHT_MAGENTA)
+    const arrangementParticleColor = new THREE.Color(ARRANGEMENT_LIGHT_AMBER)
+    const arrangementParticleTargetColor = new THREE.Color(ARRANGEMENT_LIGHT_AMBER)
     const arrangementClickFlash = {
       pending: false,
-      sequenceStart: null,
+      startTime: null,
     }
 
     const unregisterPlay = registerClickable(playTree, () => {
@@ -503,106 +565,91 @@ function Trees() {
     })
     const unregisterArrangement = registerClickable(arrangementTree, () => {
       arrangementClickFlash.pending = true
-      arrangementClickFlash.sequenceStart = null
+      arrangementClickFlash.startTime = null
       switchArrangement()
     })
-    const unsubscribePulse = registerFrame(({ elapsed }) => {
+    const unsubscribePulse = registerFrame(({ delta, elapsed }) => {
       const playMode = isPlayingRef.current ? 'playing' : 'paused'
-
-      if (playMode !== playBlinkScheduler.mode) {
-        playBlinkScheduler.mode = playMode
-        playBlinkScheduler.sequenceStart = null
-        playBlinkScheduler.nextStart =
-          elapsed + randomRange(PLAY_LIGHT_INTERVAL_MIN, PLAY_LIGHT_INTERVAL_MAX)
-        arrangementBlinkScheduler.sequenceStart = null
-        arrangementBlinkScheduler.nextStart =
-          elapsed +
-          randomRange(
-            ARRANGEMENT_LIGHT_INTERVAL_MIN,
-            ARRANGEMENT_LIGHT_INTERVAL_MAX,
-          )
-      }
-
-      const playPulseCount = playMode === 'playing' ? 1 : 2
-      const playStrength = updateScheduledBlink(elapsed, playBlinkScheduler, {
-        intervalMin: PLAY_LIGHT_INTERVAL_MIN,
-        intervalMax: PLAY_LIGHT_INTERVAL_MAX,
-        pulseCount: playPulseCount,
-        pulseDuration: BLINK_PULSE_DURATION,
-        pulseGap: BLINK_PULSE_GAP,
-      })
-      const playLightColor =
-        playMode === 'playing' ? PLAY_LIGHT_ACTIVE_COLOR : PLAY_LIGHT_PAUSED_COLOR
-      const playFlicker = 0.9 + Math.sin(elapsed * 17.8) * 0.1
-      setLightRig(
-        playTreeLights,
-        playLightColor,
-        playStrength * PLAY_LIGHT_INTENSITY * playFlicker,
-      )
-
-      let arrangementStrength = 0
-
-      if (playMode === 'playing') {
-        arrangementStrength = updateScheduledBlink(elapsed, arrangementBlinkScheduler, {
-          intervalMin: ARRANGEMENT_LIGHT_INTERVAL_MIN,
-          intervalMax: ARRANGEMENT_LIGHT_INTERVAL_MAX,
-          pulseCount: 2,
-          pulseDuration: BLINK_PULSE_DURATION,
-          pulseGap: BLINK_PULSE_GAP,
-        })
-      } else {
-        arrangementBlinkScheduler.sequenceStart = null
-      }
 
       if (arrangementClickFlash.pending) {
         arrangementClickFlash.pending = false
-        arrangementClickFlash.sequenceStart = elapsed
+        arrangementClickFlash.startTime = elapsed
       }
 
-      const arrangementClickDuration = getSequenceDuration(
-        2,
-        BLINK_PULSE_DURATION * 0.86,
-        BLINK_PULSE_GAP * 0.92,
+      let arrangementClickStrength = 0
+
+      if (arrangementClickFlash.startTime !== null) {
+        const sinceClick = elapsed - arrangementClickFlash.startTime
+
+        if (sinceClick > ARRANGEMENT_CLICK_FLASH_DURATION) {
+          arrangementClickFlash.startTime = null
+        } else if (sinceClick >= 0) {
+          const normalizedClick = sinceClick / ARRANGEMENT_CLICK_FLASH_DURATION
+          arrangementClickStrength = Math.sin(normalizedClick * Math.PI) ** 1.6
+        }
+      }
+
+      const playActivity =
+        playMode === 'playing'
+          ? PLAY_PARTICLE_ACTIVITY_PLAYING
+          : PLAY_PARTICLE_ACTIVITY_PAUSED
+      playParticleTargetColor.set(
+        playMode === 'playing' ? PLAY_LIGHT_ACTIVE_COLOR : PLAY_LIGHT_PAUSED_COLOR,
       )
-      const arrangementClickStrength = getSequenceStrength(
+      playParticleColor.lerp(playParticleTargetColor, PARTICLE_COLOR_LERP)
+      setTreeParticleSwarmAppearance(
+        playTreeParticles,
+        playParticleColor,
+        PARTICLE_BASE_OPACITY + PARTICLE_OPACITY_SWING * playActivity,
+      )
+      const isPlayGreen = playMode !== 'playing'
+      updateTreeParticleSwarm(playTreeParticles, elapsed, delta, playActivity, {
+        speedScale: isPlayGreen ? 1.18 : 0.9,
+        waveAmplitude: isPlayGreen ? 0.14 : 0.05,
+        waveFrequency: isPlayGreen ? 2.2 : 1.7,
+        waveSpeedScale: isPlayGreen ? 1.28 : 0.96,
+      })
+
+      const arrangementBaseActivity =
+        playMode === 'playing'
+          ? ARRANGEMENT_PARTICLE_ACTIVITY_PLAYING
+          : ARRANGEMENT_PARTICLE_ACTIVITY_PAUSED
+      const arrangementActivity = arrangementBaseActivity + arrangementClickStrength * 0.85
+      arrangementParticleTargetColor.lerpColors(
+        arrangementAmberColor,
+        arrangementMagentaColor,
+        arrangementClickStrength,
+      )
+      arrangementParticleColor.lerp(
+        arrangementParticleTargetColor,
+        PARTICLE_COLOR_LERP,
+      )
+      setTreeParticleSwarmAppearance(
+        arrangementTreeParticles,
+        arrangementParticleColor,
+        PARTICLE_BASE_OPACITY +
+          PARTICLE_OPACITY_SWING *
+            (arrangementBaseActivity + arrangementClickStrength * 0.72),
+      )
+      updateTreeParticleSwarm(
+        arrangementTreeParticles,
         elapsed,
-        arrangementClickFlash.sequenceStart,
-        2,
-        BLINK_PULSE_DURATION * 0.86,
-        BLINK_PULSE_GAP * 0.92,
+        delta,
+        arrangementActivity,
+        {
+          speedScale: 0.96 + arrangementClickStrength * 0.24,
+          waveAmplitude: 0.06 + arrangementClickStrength * 0.03,
+          waveFrequency: 1.76,
+          waveSpeedScale: 1.04,
+        },
       )
-
-      if (
-        arrangementClickFlash.sequenceStart !== null &&
-        elapsed - arrangementClickFlash.sequenceStart > arrangementClickDuration
-      ) {
-        arrangementClickFlash.sequenceStart = null
-      }
-
-      if (arrangementClickStrength > 0.0001) {
-        const magentaFlicker = 0.93 + Math.sin(elapsed * 20.2) * 0.07
-        setLightRig(
-          arrangementTreeLights,
-          ARRANGEMENT_LIGHT_MAGENTA,
-          arrangementClickStrength * ARRANGEMENT_CLICK_INTENSITY * magentaFlicker,
-        )
-      } else if (arrangementStrength > 0.0001) {
-        const amberFlicker = 0.9 + Math.sin(elapsed * 16.4 + 0.9) * 0.1
-        setLightRig(
-          arrangementTreeLights,
-          ARRANGEMENT_LIGHT_AMBER,
-          arrangementStrength * ARRANGEMENT_LIGHT_INTENSITY * amberFlicker,
-        )
-      } else {
-        setLightRig(arrangementTreeLights, ARRANGEMENT_LIGHT_AMBER, 0)
-      }
 
       playTreeMaterial.emissiveIntensity =
-        0.24 + Math.sin(elapsed * 1.2) * 0.04 + playStrength * 0.22
+        0.24 + Math.sin(elapsed * 1.2) * 0.04 + playActivity * 0.2
       arrangementTreeMaterial.emissiveIntensity =
         0.22 +
         Math.sin(elapsed * 1.05 + 1.4) * 0.04 +
-        Math.max(arrangementStrength, arrangementClickStrength) * 0.2
+        arrangementActivity * 0.14
 
       const signPulse = 0.5 + Math.sin(elapsed * SECTION_SIGN_PULSE_SPEED) * 0.5
       signFaceMaterial.color.lerpColors(signFaceColorMin, signFaceColorMax, signPulse)
@@ -633,6 +680,9 @@ function Trees() {
 
       scene.remove(treeGroup)
 
+      disposeTreeParticleSwarm(playTreeParticles)
+      disposeTreeParticleSwarm(arrangementTreeParticles)
+      glowParticleTexture.dispose()
       trunkGeometry.dispose()
       crownGeometry.dispose()
       arrowGeometry.dispose()
