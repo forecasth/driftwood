@@ -53,7 +53,7 @@ const whaleEvents = [
 ]
 
 const sonatataInThirtyThreeSeconds = createArrangement({
-  id: 'sonatataInThirtyThreeSeconds',
+  id: '04-sonatataInThirtyThreeSeconds',
   transport: {
     bpm: 58,
     timeSignature: [4, 4],
@@ -83,40 +83,6 @@ const sonatataInThirtyThreeSeconds = createArrangement({
       type: 'brown',
       volume: -44,
       filterFrequency: 620,
-    },
-  },
-  instruments: {
-    bass: {
-      oscillator: { type: 'square' },
-      filter: { frequency: 430, Q: 7.2 },
-      envelope: { attack: 0.9, decay: 1.2, sustain: 0.18, release: 0.28 },
-      filterEnvelope: {
-        attack: 0.1,
-        decay: 0.39,
-        sustain: 0.1,
-        release: 0.2,
-        baseFrequency: 90,
-        octaves: 4.4,
-      },
-      portamento: 0.12,
-    },
-    melody: {
-      oscillator: { type: 'sawtooth' },
-      envelope: { attack: 0.2, decay: 0.08, sustain: 0.22, release: 1.8 },
-    },
-    whale: {
-      oscillator: { type: 'triangle' },
-      filter: { frequency: 2100, Q: 2.4 },
-      envelope: { attack: 0.7, decay: 0.6, sustain: 0.9, release: 6.5 },
-      filterEnvelope: {
-        attack: 0.8,
-        decay: 0.7,
-        sustain: 0.65,
-        release: 5.4,
-        baseFrequency: 300,
-        octaves: 4.4,
-      },
-      portamento: 0.8,
     },
   },
 })

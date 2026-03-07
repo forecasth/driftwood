@@ -50,7 +50,7 @@ const whaleEvents = [
 ]
 
 const whaleBlues = createArrangement({
-  id: 'whaleBlues',
+  id: '02-whaleBlues',
   transport: {
     bpm: 54,
     timeSignature: [4, 4],
