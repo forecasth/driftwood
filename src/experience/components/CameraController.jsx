@@ -12,6 +12,8 @@ const INTRO_DURATION = 4.8
 const INTRO_OUTWARD_OFFSET = 50
 const INTRO_LATERAL_OFFSET = -180
 const INTRO_HEIGHT_OFFSET = 24
+const ENTRY_IDLE_SPIN_SPEED = 0.06
+const ENTRY_IDLE_BOB_AMPLITUDE = 0.55
 
 const targetPosition = new THREE.Vector3()
 const lookTarget = new THREE.Vector3()
@@ -22,6 +24,8 @@ const introStartPosition = new THREE.Vector3()
 const introStartLookTarget = new THREE.Vector3()
 const introCameraPosition = new THREE.Vector3()
 const introLookTarget = new THREE.Vector3()
+const entryIdlePosition = new THREE.Vector3()
+const entryIdleLookTarget = new THREE.Vector3()
 
 function wrapSectionIndex(index, sectionCount) {
   const rounded = Math.round(index)
@@ -58,7 +62,7 @@ function easeOutCubic(value) {
   return 1 - (1 - clamped) ** 3
 }
 
-function CameraController() {
+function CameraController({ introStarted = false }) {
   const {
     getCamera,
     getPointer,
@@ -96,7 +100,7 @@ function CameraController() {
       target: initialWrappedSection * sectionAngle,
     }
     const introState = {
-      active: true,
+      active: Boolean(introStarted),
       elapsed: 0,
     }
 
@@ -125,11 +129,48 @@ function CameraController() {
       .addScaledVector(outward, INTRO_OUTWARD_OFFSET)
       .addScaledVector(lateral, INTRO_LATERAL_OFFSET)
       .setY(targetPosition.y + INTRO_HEIGHT_OFFSET)
+
+    if (introStarted) {
+      introStartPosition.copy(camera.position)
+    }
+
     introStartLookTarget.set(ORBIT_CENTER.x, 0.74, ORBIT_CENTER.z)
     camera.position.copy(introStartPosition)
     camera.lookAt(introStartLookTarget)
+    const entryIdleRadius = Math.max(
+      0.01,
+      Math.hypot(
+        introStartPosition.x - ORBIT_CENTER.x,
+        introStartPosition.z - ORBIT_CENTER.z,
+      ),
+    )
+    let entryIdleAngle = Math.atan2(
+      introStartPosition.x - ORBIT_CENTER.x,
+      -(introStartPosition.z - ORBIT_CENTER.z),
+    )
+    const entryIdleYBase = introStartPosition.y
 
     const unsubscribe = registerFrame(({ delta, elapsed }) => {
+      if (!introStarted) {
+        entryIdleAngle += delta * ENTRY_IDLE_SPIN_SPEED
+        const idleBob = Math.sin(elapsed * 0.28) * ENTRY_IDLE_BOB_AMPLITUDE
+
+        entryIdlePosition.set(
+          ORBIT_CENTER.x + Math.sin(entryIdleAngle) * entryIdleRadius,
+          entryIdleYBase + idleBob,
+          ORBIT_CENTER.z - Math.cos(entryIdleAngle) * entryIdleRadius,
+        )
+        entryIdleLookTarget.set(
+          ORBIT_CENTER.x,
+          0.74 + idleBob * 0.08,
+          ORBIT_CENTER.z,
+        )
+
+        camera.position.copy(entryIdlePosition)
+        camera.lookAt(entryIdleLookTarget)
+        return
+      }
+
       const pointer = getPointer()
 
       if (!pointer) {
@@ -207,6 +248,7 @@ function CameraController() {
   }, [
     getCamera,
     getPointer,
+    introStarted,
     registerFrame,
     safeSectionCount,
   ])
