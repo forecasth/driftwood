@@ -4,6 +4,7 @@ import * as Tone from 'tone'
 import { defaultArrangementId, listArrangements } from './audio/arrangements/index.js'
 import AmbienceAudio from './components/AmbienceAudio.jsx'
 import CameraController from './components/CameraController.jsx'
+import EntryOverlay from './components/EntryOverlay.jsx'
 import EntryStones from './components/EntryStones.jsx'
 import Lighting from './components/Lighting.jsx'
 import Particles from './components/Particles.jsx'
@@ -20,6 +21,16 @@ const GROUND_RING_INNER_RADIUS = 44
 const GROUND_RING_OUTER_RADIUS = 78
 const CAMERA_SECTION_COUNT = 12
 const PHONE_HINT_MAX_SHORTEST_SIDE = 500
+const ENTRY_OVERLAY_FADE_MS = 1500
+const ENTRY_SHELL_STYLE = Object.freeze({
+  '--sky-top': '#ffbe5d',
+  '--sky-mid': '#d16a88',
+  '--sky-bottom': '#a347a6',
+  '--sky-glow': 'rgba(255, 225, 164, 0.52)',
+  '--sky-shadow': 'rgba(145, 42, 103, 0.22)',
+  '--sky-glow-x': '18%',
+  '--sky-glow-y': '16%',
+})
 
 function wrapSectionIndex(index, sectionCount) {
   if (!Number.isFinite(index) || sectionCount <= 0) {
@@ -39,24 +50,30 @@ function Scene() {
   const arrangementIds = useMemo(() => listArrangements(), [])
   const [arrangementId, setArrangementId] = useState(defaultArrangementId)
   const [isPlaying, setIsPlaying] = useState(false)
+  const [musicVolume, setMusicVolume] = useState(0.8)
   const [dayProgress, setDayProgressState] = useState(() => getSystemDayProgress())
   const [isSystemTimeEnabled, setIsSystemTimeEnabled] = useState(true)
   const [sceneToken, setSceneToken] = useState(0)
   const [sectionIndex, setSectionIndexState] = useState(0)
   const [showRotateHint, setShowRotateHint] = useState(false)
+  const [hasEntered, setHasEntered] = useState(false)
+  const [showEntryOverlay, setShowEntryOverlay] = useState(true)
   const dayCycle = useMemo(() => sampleDayCycle(dayProgress), [dayProgress])
 
   const shellStyle = useMemo(
-    () => ({
-      '--sky-top': dayCycle.skyTop,
-      '--sky-mid': dayCycle.skyMid,
-      '--sky-bottom': dayCycle.skyBottom,
-      '--sky-glow': dayCycle.skyGlow,
-      '--sky-shadow': dayCycle.skyShadow,
-      '--sky-glow-x': dayCycle.skyGlowX,
-      '--sky-glow-y': dayCycle.skyGlowY,
-    }),
-    [dayCycle],
+    () =>
+      showEntryOverlay
+        ? ENTRY_SHELL_STYLE
+        : {
+            '--sky-top': dayCycle.skyTop,
+            '--sky-mid': dayCycle.skyMid,
+            '--sky-bottom': dayCycle.skyBottom,
+            '--sky-glow': dayCycle.skyGlow,
+            '--sky-shadow': dayCycle.skyShadow,
+            '--sky-glow-x': dayCycle.skyGlowX,
+            '--sky-glow-y': dayCycle.skyGlowY,
+          },
+    [dayCycle, showEntryOverlay],
   )
 
   useEffect(() => {
@@ -71,12 +88,16 @@ function Scene() {
     }
   }, [])
 
-  const registerClickable = useCallback((object, onClick) => {
+  const registerClickable = useCallback((object, onClick, options = undefined) => {
     if (!object || typeof onClick !== 'function') {
       return () => {}
     }
 
-    clickablesRef.current.set(object.uuid, { object, onClick })
+    clickablesRef.current.set(object.uuid, {
+      object,
+      onClick,
+      cursor: typeof options?.cursor === 'string' ? options.cursor : '',
+    })
 
     return () => {
       const current = clickablesRef.current.get(object.uuid)
@@ -104,6 +125,26 @@ function Scene() {
     setIsPlaying((playing) => !playing)
   }, [])
 
+  const handleEnter = useCallback(() => {
+    if (hasEntered) {
+      return
+    }
+
+    void Tone.start().catch(() => undefined)
+    setIsPlaying(true)
+    setHasEntered(true)
+  }, [hasEntered])
+
+  const handleVolumeChange = useCallback((event) => {
+    const nextValue = Number(event.target.value)
+
+    if (!Number.isFinite(nextValue)) {
+      return
+    }
+
+    setMusicVolume(Math.min(1, Math.max(0, nextValue / 100)))
+  }, [])
+
   const setDayProgress = useCallback((nextProgress) => {
     setIsSystemTimeEnabled(false)
 
@@ -118,6 +159,20 @@ function Scene() {
       return wrapDayProgress(value)
     })
   }, [])
+
+  useEffect(() => {
+    if (!hasEntered || !showEntryOverlay) {
+      return undefined
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setShowEntryOverlay(false)
+    }, ENTRY_OVERLAY_FADE_MS)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [hasEntered, showEntryOverlay])
 
   useEffect(() => {
     if (!isSystemTimeEnabled) {
@@ -277,7 +332,7 @@ function Scene() {
       44,
       mountElement.clientWidth / mountElement.clientHeight,
       0.1,
-      120,
+      420,
     )
     camera.position.set(0, 1.7, 8.4)
 
@@ -328,24 +383,14 @@ function Scene() {
       setSceneToken((value) => value + 1)
     })
 
-    const handlePointerMove = (event) => {
-      const bounds = mountElement.getBoundingClientRect()
-      pointer.x = ((event.clientX - bounds.left) / bounds.width - 0.5) * 2
-      pointer.y = ((event.clientY - bounds.top) / bounds.height - 0.5) * 2
-    }
-
-    const handlePointerLeave = () => {
-      pointer.set(0, 0)
-    }
-
-    const handlePointerDown = (event) => {
+    const resolveClickableIntersection = (clientX, clientY) => {
       if (clickables.size === 0) {
-        return
+        return null
       }
 
       const bounds = mountElement.getBoundingClientRect()
-      raycastPointer.x = ((event.clientX - bounds.left) / bounds.width) * 2 - 1
-      raycastPointer.y = -((event.clientY - bounds.top) / bounds.height) * 2 + 1
+      raycastPointer.x = ((clientX - bounds.left) / bounds.width) * 2 - 1
+      raycastPointer.y = -((clientY - bounds.top) / bounds.height) * 2 + 1
       raycaster.setFromCamera(raycastPointer, camera)
 
       const targets = Array.from(clickables.values(), (entry) => entry.object)
@@ -358,12 +403,40 @@ function Scene() {
           const entry = clickables.get(current.uuid)
 
           if (entry) {
-            entry.onClick(intersection)
-            return
+            return { entry, intersection }
           }
 
           current = current.parent
         }
+      }
+
+      return null
+    }
+
+    const handlePointerMove = (event) => {
+      const bounds = mountElement.getBoundingClientRect()
+      pointer.x = ((event.clientX - bounds.left) / bounds.width - 0.5) * 2
+      pointer.y = ((event.clientY - bounds.top) / bounds.height - 0.5) * 2
+
+      if (event.pointerType !== 'mouse' && event.pointerType !== 'pen') {
+        mountElement.style.cursor = ''
+        return
+      }
+
+      const hoverResult = resolveClickableIntersection(event.clientX, event.clientY)
+      mountElement.style.cursor = hoverResult?.entry.cursor ?? ''
+    }
+
+    const handlePointerLeave = () => {
+      pointer.set(0, 0)
+      mountElement.style.cursor = ''
+    }
+
+    const handlePointerDown = (event) => {
+      const clickResult = resolveClickableIntersection(event.clientX, event.clientY)
+
+      if (clickResult) {
+        clickResult.entry.onClick(clickResult.intersection)
       }
     }
 
@@ -406,6 +479,7 @@ function Scene() {
       mountElement.removeEventListener('pointermove', handlePointerMove)
       mountElement.removeEventListener('pointerleave', handlePointerLeave)
       mountElement.removeEventListener('pointerdown', handlePointerDown)
+      mountElement.style.cursor = ''
 
       scene.remove(ground)
       ground.geometry.dispose()
@@ -429,30 +503,50 @@ function Scene() {
 
     const { scene, renderer, groundMaterial } = state
     const fog = scene.fog
+    const isEntryVisualState = showEntryOverlay
 
     if (fog) {
       fog.color.set(dayCycle.fog)
-      fog.density = dayCycle.fogDensity
+      fog.density = isEntryVisualState ? dayCycle.fogDensity * 0.18 : dayCycle.fogDensity
     }
 
     groundMaterial.color.set(dayCycle.ground)
     groundMaterial.opacity = dayCycle.groundOpacity
-    renderer.toneMappingExposure = dayCycle.exposure
-  }, [dayCycle])
+    renderer.toneMappingExposure = isEntryVisualState
+      ? dayCycle.exposure + 0.18
+      : dayCycle.exposure
+  }, [dayCycle, showEntryOverlay])
 
   return (
     <div className="scene-shell" style={shellStyle}>
       <div className="scene-mount" ref={mountRef} />
       <div className="scene-ui">
-        <button
-          type="button"
-          className="scene-audio-button"
-          onClick={togglePlayback}
-          aria-pressed={isPlaying}
-        >
-          {isPlaying ? 'Pause Music' : 'Play Music'}
-        </button>
-        {showRotateHint ? (
+        {showEntryOverlay ? (
+          <EntryOverlay onEnter={handleEnter} isExiting={hasEntered} />
+        ) : null}
+        {hasEntered ? (
+          <div className="scene-audio-controls">
+            <button
+              type="button"
+              className="scene-audio-button"
+              onClick={togglePlayback}
+              aria-pressed={isPlaying}
+            >
+              {isPlaying ? 'Pause Music' : 'Play Music'}
+            </button>
+            <input
+              id="scene-volume-slider"
+              className="scene-volume-slider"
+              type="range"
+              min="0"
+              max="100"
+              value={Math.round(musicVolume * 100)}
+              onChange={handleVolumeChange}
+              aria-label="Music volume"
+            />
+          </div>
+        ) : null}
+        {hasEntered && showRotateHint ? (
           <div className="scene-rotate-hint" aria-hidden="true">
             <svg
               className="scene-rotate-hint-icon"
@@ -475,8 +569,8 @@ function Scene() {
             <Particles />
             <EntryStones />
             <Trees />
-            <CameraController />
-            <AmbienceAudio />
+            <CameraController introStarted={hasEntered} />
+            <AmbienceAudio volume={musicVolume} />
           </Fragment>
         ) : null}
       </SceneContext.Provider>

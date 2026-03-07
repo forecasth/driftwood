@@ -513,7 +513,7 @@ function Trees() {
           registerClickable(sectionSign, () => {
             stepSection(sectionDelta)
             switchArrangement(sectionDelta)
-          }),
+          }, { cursor: 'pointer' }),
         )
       })
     }

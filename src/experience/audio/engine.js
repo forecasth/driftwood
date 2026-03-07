@@ -136,7 +136,17 @@ function createTrackPart(synth, track) {
   return part
 }
 
-export function createAudioEngine(arrangement) {
+function clampVolume(value) {
+  if (!Number.isFinite(value)) {
+    return 0
+  }
+
+  return Math.min(1, Math.max(0, value))
+}
+
+export function createAudioEngine(arrangement, options = {}) {
+  const initialVolume = clampVolume(options.volume ?? 0.8)
+
   Tone.Transport.cancel(0)
   Tone.Transport.bpm.value = arrangement.transport.bpm
   Tone.Transport.timeSignature = arrangement.transport.timeSignature
@@ -144,7 +154,7 @@ export function createAudioEngine(arrangement) {
   Tone.Transport.loopEnd = arrangement.transport.loopEnd
 
   const outputLimiter = new Tone.Limiter(-2).toDestination()
-  const masterGain = new Tone.Gain(0.8).connect(outputLimiter)
+  const masterGain = new Tone.Gain(initialVolume).connect(outputLimiter)
   const space = new Tone.Reverb({
     decay: 8,
     preDelay: 0.04,
@@ -230,6 +240,10 @@ export function createAudioEngine(arrangement) {
       if (Tone.Transport.state === 'started') {
         Tone.Transport.pause()
       }
+    },
+    setVolume(nextVolume) {
+      const volume = clampVolume(nextVolume)
+      masterGain.gain.rampTo(volume, 0.08)
     },
     dispose() {
       if (

@@ -49,10 +49,19 @@
   z-index: 2;
 }
 
-.scene-audio-button {
+.scene-audio-controls {
+  --audio-control-width: 8rem;
+
   position: absolute;
   top: max(1rem, env(safe-area-inset-top));
   right: max(1rem, env(safe-area-inset-right));
+  display: grid;
+  gap: 0.4rem;
+  justify-items: end;
+}
+
+.scene-audio-button {
+  width: var(--audio-control-width);
   border: 1px solid rgba(255, 209, 136, 0.62);
   background: rgba(18, 28, 24, 0.72);
   color: #ffe2b4;
@@ -63,6 +72,7 @@
   letter-spacing: 0.02em;
   cursor: pointer;
   pointer-events: auto;
+  text-align: center;
   transition: background-color 180ms ease, border-color 180ms ease, transform 180ms ease;
 }
 
@@ -75,6 +85,13 @@
 .scene-audio-button:focus-visible {
   outline: 2px solid rgba(255, 209, 136, 0.92);
   outline-offset: 2px;
+}
+
+.scene-volume-slider {
+  width: var(--audio-control-width);
+  accent-color: #ffd188;
+  cursor: pointer;
+  pointer-events: auto;
 }
 
 .scene-rotate-hint {
