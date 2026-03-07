@@ -19,6 +19,7 @@ const CAMERA_ORBIT_CENTER_Z = 8.4 + CAMERA_ORBIT_RADIUS
 const GROUND_RING_INNER_RADIUS = 44
 const GROUND_RING_OUTER_RADIUS = 78
 const CAMERA_SECTION_COUNT = 12
+const PHONE_HINT_MAX_SHORTEST_SIDE = 500
 
 function wrapSectionIndex(index, sectionCount) {
   if (!Number.isFinite(index) || sectionCount <= 0) {
@@ -42,6 +43,7 @@ function Scene() {
   const [isSystemTimeEnabled, setIsSystemTimeEnabled] = useState(true)
   const [sceneToken, setSceneToken] = useState(0)
   const [sectionIndex, setSectionIndexState] = useState(0)
+  const [showRotateHint, setShowRotateHint] = useState(false)
   const dayCycle = useMemo(() => sampleDayCycle(dayProgress), [dayProgress])
 
   const shellStyle = useMemo(
@@ -134,8 +136,40 @@ function Scene() {
     }
   }, [isSystemTimeEnabled])
 
-  const switchArrangement = useCallback(() => {
+  useEffect(() => {
+    const checkRotateHint = () => {
+      const viewportWidth = window.innerWidth || 0
+      const viewportHeight = window.innerHeight || 0
+      const shortestSide = Math.min(viewportWidth, viewportHeight)
+      const isPortrait = viewportHeight > viewportWidth
+      const isCoarsePointer =
+        typeof window.matchMedia === 'function'
+          ? window.matchMedia('(pointer: coarse)').matches
+          : false
+      const isLikelyPhone =
+        isCoarsePointer && shortestSide > 0 && shortestSide <= PHONE_HINT_MAX_SHORTEST_SIDE
+
+      setShowRotateHint(isLikelyPhone && isPortrait)
+    }
+
+    checkRotateHint()
+    window.addEventListener('resize', checkRotateHint)
+    window.addEventListener('orientationchange', checkRotateHint)
+
+    return () => {
+      window.removeEventListener('resize', checkRotateHint)
+      window.removeEventListener('orientationchange', checkRotateHint)
+    }
+  }, [])
+
+  const switchArrangement = useCallback((step = 1) => {
     if (arrangementIds.length < 2) {
+      return
+    }
+
+    const stepValue = Math.trunc(step)
+
+    if (!Number.isFinite(stepValue) || stepValue === 0) {
       return
     }
 
@@ -146,7 +180,10 @@ function Scene() {
         return arrangementIds[0]
       }
 
-      return arrangementIds[(currentIndex + 1) % arrangementIds.length]
+      const wrappedIndex =
+        ((currentIndex + stepValue) % arrangementIds.length + arrangementIds.length) %
+        arrangementIds.length
+      return arrangementIds[wrappedIndex]
     })
   }, [arrangementIds])
 
@@ -406,6 +443,30 @@ function Scene() {
   return (
     <div className="scene-shell" style={shellStyle}>
       <div className="scene-mount" ref={mountRef} />
+      <div className="scene-ui">
+        <button
+          type="button"
+          className="scene-audio-button"
+          onClick={togglePlayback}
+          aria-pressed={isPlaying}
+        >
+          {isPlaying ? 'Pause Music' : 'Play Music'}
+        </button>
+        {showRotateHint ? (
+          <div className="scene-rotate-hint" aria-hidden="true">
+            <svg
+              className="scene-rotate-hint-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <rect x="6" y="8" width="12" height="8" rx="2" />
+              <path d="M8.2 4.8a8 8 0 0 1 10.4 2.6" />
+              <path d="M18.2 7.4V3.8l-3.2.8" />
+            </svg>
+          </div>
+        ) : null}
+      </div>
       <SceneContext.Provider value={sceneApi}>
         {sceneToken > 0 ? (
           <Fragment key={sceneToken}>

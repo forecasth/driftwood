@@ -13,8 +13,8 @@ const registry = Object.values(modules).reduce((collection, module) => {
 }, {})
 
 const fallbackId = Object.keys(registry)[0]
-export const defaultArrangementId = registry.duskArpeggio
-  ? 'duskArpeggio'
+export const defaultArrangementId = registry['01-notBlues']
+  ? '01-notBlues'
   : fallbackId
 
 export function getArrangement(id = defaultArrangementId) {

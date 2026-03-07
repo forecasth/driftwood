@@ -35,7 +35,7 @@ const melodyEvents = [
 ]
 
 const fmaj7Em7Fantasia = createArrangement({
-id: 'fmaj7Em7Fantasia',
+id: '01-notBlues',
 transport: {
 bpm: 50,
 timeSignature: [4, 4],

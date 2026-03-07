@@ -42,6 +42,88 @@
   inset: 0;
 }
 
+.scene-ui {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.scene-audio-button {
+  position: absolute;
+  top: max(1rem, env(safe-area-inset-top));
+  right: max(1rem, env(safe-area-inset-right));
+  border: 1px solid rgba(255, 209, 136, 0.62);
+  background: rgba(18, 28, 24, 0.72);
+  color: #ffe2b4;
+  padding: 0.62rem 0.88rem;
+  border-radius: 999px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background-color 180ms ease, border-color 180ms ease, transform 180ms ease;
+}
+
+.scene-audio-button:hover {
+  background: rgba(34, 45, 38, 0.82);
+  border-color: rgba(255, 209, 136, 0.9);
+  transform: translateY(-1px);
+}
+
+.scene-audio-button:focus-visible {
+  outline: 2px solid rgba(255, 209, 136, 0.92);
+  outline-offset: 2px;
+}
+
+.scene-rotate-hint {
+  position: absolute;
+  left: 50%;
+  bottom: max(0.9rem, env(safe-area-inset-bottom));
+  width: 2.7rem;
+  height: 2.7rem;
+  border-radius: 999px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 175, 89, 0.7);
+  background: rgba(33, 15, 9, 0.52);
+  color: #ffd188;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 0 20px rgba(255, 132, 66, 0.22);
+  pointer-events: none;
+  animation: scene-rotate-throb 1.5s ease-in-out infinite;
+}
+
+.scene-rotate-hint-icon {
+  width: 1.3rem;
+  height: 1.3rem;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@keyframes scene-rotate-throb {
+  0% {
+    transform: translateX(-50%) scale(0.92);
+    border-color: rgba(255, 175, 89, 0.48);
+    box-shadow: 0 0 10px rgba(255, 132, 66, 0.16);
+  }
+
+  50% {
+    transform: translateX(-50%) scale(1);
+    border-color: rgba(255, 196, 120, 0.92);
+    box-shadow: 0 0 24px rgba(255, 136, 72, 0.35);
+  }
+
+  100% {
+    transform: translateX(-50%) scale(0.92);
+    border-color: rgba(255, 175, 89, 0.48);
+    box-shadow: 0 0 10px rgba(255, 132, 66, 0.16);
+  }
+}
+
 .scene-canvas {
   display: block;
   width: 100%;
