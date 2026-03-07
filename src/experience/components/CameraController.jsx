@@ -8,11 +8,20 @@ const ORBIT_CENTER = new THREE.Vector3(0, basePosition.y, basePosition.z + ORBIT
 const TAU = Math.PI * 2
 const LOOK_DISTANCE = 14
 const SECTION_TRANSITION_DAMP = 1.85
+const INTRO_DURATION = 4.8
+const INTRO_OUTWARD_OFFSET = 50
+const INTRO_LATERAL_OFFSET = -180
+const INTRO_HEIGHT_OFFSET = 24
 
 const targetPosition = new THREE.Vector3()
 const lookTarget = new THREE.Vector3()
 const outward = new THREE.Vector3()
 const smoothedLookTarget = new THREE.Vector3()
+const lateral = new THREE.Vector3()
+const introStartPosition = new THREE.Vector3()
+const introStartLookTarget = new THREE.Vector3()
+const introCameraPosition = new THREE.Vector3()
+const introLookTarget = new THREE.Vector3()
 
 function wrapSectionIndex(index, sectionCount) {
   const rounded = Math.round(index)
@@ -42,6 +51,11 @@ function resolveNearestStep(wrappedSection, referenceStep, sectionCount) {
   }
 
   return nearest
+}
+
+function easeOutCubic(value) {
+  const clamped = Math.min(1, Math.max(0, value))
+  return 1 - (1 - clamped) ** 3
 }
 
 function CameraController() {
@@ -81,6 +95,39 @@ function CameraController() {
       current: initialWrappedSection * sectionAngle,
       target: initialWrappedSection * sectionAngle,
     }
+    const introState = {
+      active: true,
+      elapsed: 0,
+    }
+
+    outward.set(
+      Math.sin(orbitAngleState.current),
+      0,
+      -Math.cos(orbitAngleState.current),
+    )
+    lateral.set(Math.cos(orbitAngleState.current), 0, Math.sin(orbitAngleState.current))
+
+    targetPosition.set(
+      ORBIT_CENTER.x + outward.x * ORBIT_RADIUS,
+      basePosition.y,
+      ORBIT_CENTER.z + outward.z * ORBIT_RADIUS,
+    )
+    lookTarget.set(
+      targetPosition.x + outward.x * LOOK_DISTANCE,
+      0.56,
+      targetPosition.z + outward.z * LOOK_DISTANCE,
+    )
+    smoothedPosition.copy(targetPosition)
+    smoothedLookTarget.copy(lookTarget)
+
+    introStartPosition
+      .copy(targetPosition)
+      .addScaledVector(outward, INTRO_OUTWARD_OFFSET)
+      .addScaledVector(lateral, INTRO_LATERAL_OFFSET)
+      .setY(targetPosition.y + INTRO_HEIGHT_OFFSET)
+    introStartLookTarget.set(ORBIT_CENTER.x, 0.74, ORBIT_CENTER.z)
+    camera.position.copy(introStartPosition)
+    camera.lookAt(introStartLookTarget)
 
     const unsubscribe = registerFrame(({ delta, elapsed }) => {
       const pointer = getPointer()
@@ -134,6 +181,23 @@ function CameraController() {
         smoothedPosition.z + outward.z * LOOK_DISTANCE,
       )
       smoothedLookTarget.lerp(lookTarget, 0.1)
+
+      if (introState.active) {
+        introState.elapsed += delta
+        const progress = easeOutCubic(introState.elapsed / INTRO_DURATION)
+
+        introCameraPosition.lerpVectors(introStartPosition, smoothedPosition, progress)
+        introLookTarget.lerpVectors(introStartLookTarget, smoothedLookTarget, progress)
+        camera.position.copy(introCameraPosition)
+        camera.lookAt(introLookTarget)
+
+        if (progress >= 1) {
+          introState.active = false
+        }
+
+        return
+      }
+
       camera.lookAt(smoothedLookTarget)
     })
 
