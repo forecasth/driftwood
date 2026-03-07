@@ -134,8 +134,14 @@ function Scene() {
     }
   }, [isSystemTimeEnabled])
 
-  const switchArrangement = useCallback(() => {
+  const switchArrangement = useCallback((step = 1) => {
     if (arrangementIds.length < 2) {
+      return
+    }
+
+    const stepValue = Math.trunc(step)
+
+    if (!Number.isFinite(stepValue) || stepValue === 0) {
       return
     }
 
@@ -146,7 +152,10 @@ function Scene() {
         return arrangementIds[0]
       }
 
-      return arrangementIds[(currentIndex + 1) % arrangementIds.length]
+      const wrappedIndex =
+        ((currentIndex + stepValue) % arrangementIds.length + arrangementIds.length) %
+        arrangementIds.length
+      return arrangementIds[wrappedIndex]
     })
   }, [arrangementIds])
 
@@ -406,6 +415,16 @@ function Scene() {
   return (
     <div className="scene-shell" style={shellStyle}>
       <div className="scene-mount" ref={mountRef} />
+      <div className="scene-ui">
+        <button
+          type="button"
+          className="scene-audio-button"
+          onClick={togglePlayback}
+          aria-pressed={isPlaying}
+        >
+          {isPlaying ? 'Pause Music' : 'Play Music'}
+        </button>
+      </div>
       <SceneContext.Provider value={sceneApi}>
         {sceneToken > 0 ? (
           <Fragment key={sceneToken}>

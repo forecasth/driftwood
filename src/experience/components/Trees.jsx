@@ -24,20 +24,17 @@ const SECTION_SIGN_FACE_BASE = 0.42
 const SECTION_SIGN_FACE_PULSE = 0.78
 const SECTION_SIGN_EDGE_BASE = 0.74
 const SECTION_SIGN_EDGE_PULSE = 1.08
-const PLAY_LIGHT_PAUSED_COLOR = '#b8ff45'
-const PLAY_LIGHT_ACTIVE_COLOR = '#ffb24a'
-const ARRANGEMENT_LIGHT_AMBER = '#ffaf59'
-const ARRANGEMENT_LIGHT_MAGENTA = '#df42ff'
-const PLAY_PARTICLE_COUNT = 18
-const ARRANGEMENT_PARTICLE_COUNT = 20
+const SWARM_TREE_RATIO = 1 / 3
+const SWARM_PARTICLE_COUNT = 18
+const SWARM_LIGHT_AMBER = '#ffaf59'
+const SWARM_LIGHT_GREEN = '#b8ff45'
+const SWARM_LIGHT_MAGENTA = '#df42ff'
 const PARTICLE_BASE_OPACITY = 0.46
 const PARTICLE_OPACITY_SWING = 0.24
-const PLAY_PARTICLE_ACTIVITY_PAUSED = 0.58
-const PLAY_PARTICLE_ACTIVITY_PLAYING = 0.92
-const ARRANGEMENT_PARTICLE_ACTIVITY_PAUSED = 0.52
-const ARRANGEMENT_PARTICLE_ACTIVITY_PLAYING = 0.78
+const SWARM_PARTICLE_ACTIVITY_PAUSED = 0.58
+const SWARM_PARTICLE_ACTIVITY_PLAYING = 0.92
 const PARTICLE_COLOR_LERP = 0.12
-const ARRANGEMENT_CLICK_FLASH_DURATION = 0.88
+const SWARM_CLICK_FLASH_DURATION = 0.88
 const PARTICLE_RADIUS_MIN_MULTIPLIER = 1.14
 const PARTICLE_RADIUS_MAX_MULTIPLIER = 1.46
 
@@ -47,6 +44,17 @@ function randomRange(min, max) {
 
 function randomRingRadius(innerRadius, outerRadius) {
   return Math.sqrt(randomRange(innerRadius ** 2, outerRadius ** 2))
+}
+
+function shuffleInPlace(items) {
+  for (let index = items.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1))
+    const current = items[index]
+    items[index] = items[swapIndex]
+    items[swapIndex] = current
+  }
+
+  return items
 }
 
 function createGlowSpriteTexture() {
@@ -311,7 +319,6 @@ function Trees() {
     getScene,
     registerFrame,
     registerClickable,
-    togglePlayback,
     switchArrangement,
     isPlaying,
     sectionCount,
@@ -337,6 +344,7 @@ function Trees() {
 
     const trunkGeometry = new THREE.CylinderGeometry(1, 1, 1, 7)
     const crownGeometry = new THREE.ConeGeometry(1, 1, 8)
+    const forestTrees = []
 
     const darkTrunkMaterial = new THREE.MeshStandardMaterial({
       color: new THREE.Color(palette.treeTrunk),
@@ -351,35 +359,6 @@ function Trees() {
       metalness: 0.01,
     })
 
-    const amberTrunkMaterial = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(palette.amberTreeBark),
-      emissive: new THREE.Color(palette.amberTreeGlow),
-      emissiveIntensity: 0.1,
-      roughness: 0.9,
-      metalness: 0.03,
-    })
-    const playTreeMaterial = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(palette.amberTree),
-      emissive: new THREE.Color(palette.amberTreeGlow),
-      emissiveIntensity: 0.3,
-      roughness: 0.88,
-      metalness: 0.04,
-    })
-    const arrangementTreeMaterial = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(palette.amberTree),
-      emissive: new THREE.Color(palette.amberTreeGlow),
-      emissiveIntensity: 0.28,
-      roughness: 0.87,
-      metalness: 0.04,
-    })
-    const playTreeTrunkHeight = 2.7
-    const playTreeTrunkRadius = 0.15
-    const playTreeCrownHeight = 2.6
-    const playTreeCrownRadius = 1.08
-    const arrangementTreeTrunkHeight = 2.9
-    const arrangementTreeTrunkRadius = 0.16
-    const arrangementTreeCrownHeight = 2.75
-    const arrangementTreeCrownRadius = 1.12
     const arrowShape = createArrowSignShape()
     const arrowGeometry = new THREE.ExtrudeGeometry(arrowShape, {
       depth: 0.14,
@@ -431,50 +410,27 @@ function Trees() {
         continue
       }
 
+      const trunkHeight = randomRange(2.3, 4.9)
+      const trunkRadius = randomRange(0.09, 0.19)
+      const crownHeight = randomRange(1.9, 4.2)
+      const crownRadius = randomRange(0.68, 1.45)
       const tree = createTree({
         trunkGeometry,
         crownGeometry,
         trunkMaterial: darkTrunkMaterial,
         crownMaterial: darkCrownMaterial,
-        trunkHeight: randomRange(2.3, 4.9),
-        trunkRadius: randomRange(0.09, 0.19),
-        crownHeight: randomRange(1.9, 4.2),
-        crownRadius: randomRange(0.68, 1.45),
+        trunkHeight,
+        trunkRadius,
+        crownHeight,
+        crownRadius,
       })
 
       tree.position.set(x, 0, z)
       tree.rotation.y = randomRange(0, Math.PI * 2)
       treeGroup.add(tree)
+      forestTrees.push({ tree, trunkHeight, crownHeight, crownRadius })
       plantedTrees += 1
     }
-
-    const playTree = createTree({
-      trunkGeometry,
-      crownGeometry,
-      trunkMaterial: amberTrunkMaterial,
-      crownMaterial: playTreeMaterial,
-      trunkHeight: playTreeTrunkHeight,
-      trunkRadius: playTreeTrunkRadius,
-      crownHeight: playTreeCrownHeight,
-      crownRadius: playTreeCrownRadius,
-    })
-    playTree.position.set(-2.35, 0, -3.7)
-    playTree.rotation.y = -0.2
-    treeGroup.add(playTree)
-
-    const arrangementTree = createTree({
-      trunkGeometry,
-      crownGeometry,
-      trunkMaterial: amberTrunkMaterial,
-      crownMaterial: arrangementTreeMaterial,
-      trunkHeight: arrangementTreeTrunkHeight,
-      trunkRadius: arrangementTreeTrunkRadius,
-      crownHeight: arrangementTreeCrownHeight,
-      crownRadius: arrangementTreeCrownRadius,
-    })
-    arrangementTree.position.set(2.45, 0, -3.55)
-    arrangementTree.rotation.y = 0.18
-    treeGroup.add(arrangementTree)
 
     const signUp = new THREE.Vector3(0, 1, 0)
     const outward = new THREE.Vector3()
@@ -524,132 +480,99 @@ function Trees() {
         sectionSignUnsubscribers.push(
           registerClickable(sectionSign, () => {
             stepSection(sectionDelta)
+            switchArrangement(sectionDelta)
           }),
         )
       })
     }
 
     const glowParticleTexture = createGlowSpriteTexture()
-    const playTreeParticles = createTreeParticleSwarm({
-      tree: playTree,
-      texture: glowParticleTexture,
-      color: PLAY_LIGHT_PAUSED_COLOR,
-      particleCount: PLAY_PARTICLE_COUNT,
-      trunkHeight: playTreeTrunkHeight,
-      crownHeight: playTreeCrownHeight,
-      crownRadius: playTreeCrownRadius,
-    })
-    const arrangementTreeParticles = createTreeParticleSwarm({
-      tree: arrangementTree,
-      texture: glowParticleTexture,
-      color: ARRANGEMENT_LIGHT_AMBER,
-      particleCount: ARRANGEMENT_PARTICLE_COUNT,
-      trunkHeight: arrangementTreeTrunkHeight,
-      crownHeight: arrangementTreeCrownHeight,
-      crownRadius: arrangementTreeCrownRadius,
-    })
-
-    const playParticleColor = new THREE.Color(PLAY_LIGHT_PAUSED_COLOR)
-    const playParticleTargetColor = new THREE.Color(PLAY_LIGHT_PAUSED_COLOR)
-    const arrangementAmberColor = new THREE.Color(ARRANGEMENT_LIGHT_AMBER)
-    const arrangementMagentaColor = new THREE.Color(ARRANGEMENT_LIGHT_MAGENTA)
-    const arrangementParticleColor = new THREE.Color(ARRANGEMENT_LIGHT_AMBER)
-    const arrangementParticleTargetColor = new THREE.Color(ARRANGEMENT_LIGHT_AMBER)
-    const arrangementClickFlash = {
-      pending: false,
-      startTime: null,
-    }
-
-    const unregisterPlay = registerClickable(playTree, () => {
-      togglePlayback()
-    })
-    const unregisterArrangement = registerClickable(arrangementTree, () => {
-      arrangementClickFlash.pending = true
-      arrangementClickFlash.startTime = null
-      switchArrangement()
-    })
-    const unsubscribePulse = registerFrame(({ delta, elapsed }) => {
-      const playMode = isPlayingRef.current ? 'playing' : 'paused'
-
-      if (arrangementClickFlash.pending) {
-        arrangementClickFlash.pending = false
-        arrangementClickFlash.startTime = elapsed
-      }
-
-      let arrangementClickStrength = 0
-
-      if (arrangementClickFlash.startTime !== null) {
-        const sinceClick = elapsed - arrangementClickFlash.startTime
-
-        if (sinceClick > ARRANGEMENT_CLICK_FLASH_DURATION) {
-          arrangementClickFlash.startTime = null
-        } else if (sinceClick >= 0) {
-          const normalizedClick = sinceClick / ARRANGEMENT_CLICK_FLASH_DURATION
-          arrangementClickStrength = Math.sin(normalizedClick * Math.PI) ** 1.6
-        }
-      }
-
-      const playActivity =
-        playMode === 'playing'
-          ? PLAY_PARTICLE_ACTIVITY_PLAYING
-          : PLAY_PARTICLE_ACTIVITY_PAUSED
-      playParticleTargetColor.set(
-        playMode === 'playing' ? PLAY_LIGHT_ACTIVE_COLOR : PLAY_LIGHT_PAUSED_COLOR,
+    const particleTreeCount = Math.floor(forestTrees.length * SWARM_TREE_RATIO)
+    const selectedTrees = shuffleInPlace(forestTrees.slice()).slice(0, particleTreeCount)
+    const amberCount = Math.floor(selectedTrees.length / 2)
+    const magentaColor = new THREE.Color(SWARM_LIGHT_MAGENTA)
+    const particleTreeEntries = selectedTrees.map((treeConfig, index) => {
+      const variant = index < amberCount ? 'amber' : 'green'
+      const baseColor = new THREE.Color(
+        variant === 'amber' ? SWARM_LIGHT_AMBER : SWARM_LIGHT_GREEN,
       )
-      playParticleColor.lerp(playParticleTargetColor, PARTICLE_COLOR_LERP)
-      setTreeParticleSwarmAppearance(
-        playTreeParticles,
-        playParticleColor,
-        PARTICLE_BASE_OPACITY + PARTICLE_OPACITY_SWING * playActivity,
-      )
-      const isPlayGreen = playMode !== 'playing'
-      updateTreeParticleSwarm(playTreeParticles, elapsed, delta, playActivity, {
-        speedScale: isPlayGreen ? 1.18 : 0.9,
-        waveAmplitude: isPlayGreen ? 0.14 : 0.05,
-        waveFrequency: isPlayGreen ? 2.2 : 1.7,
-        waveSpeedScale: isPlayGreen ? 1.28 : 0.96,
+      const swarm = createTreeParticleSwarm({
+        tree: treeConfig.tree,
+        texture: glowParticleTexture,
+        color: baseColor,
+        particleCount: SWARM_PARTICLE_COUNT,
+        trunkHeight: treeConfig.trunkHeight,
+        crownHeight: treeConfig.crownHeight,
+        crownRadius: treeConfig.crownRadius,
+      })
+      const currentColor = baseColor.clone()
+      const targetColor = baseColor.clone()
+      const clickFlash = {
+        pending: false,
+        startTime: null,
+      }
+      const unregister = registerClickable(treeConfig.tree, () => {
+        clickFlash.pending = true
+        clickFlash.startTime = null
       })
 
-      const arrangementBaseActivity =
-        playMode === 'playing'
-          ? ARRANGEMENT_PARTICLE_ACTIVITY_PLAYING
-          : ARRANGEMENT_PARTICLE_ACTIVITY_PAUSED
-      const arrangementActivity = arrangementBaseActivity + arrangementClickStrength * 0.85
-      arrangementParticleTargetColor.lerpColors(
-        arrangementAmberColor,
-        arrangementMagentaColor,
-        arrangementClickStrength,
-      )
-      arrangementParticleColor.lerp(
-        arrangementParticleTargetColor,
-        PARTICLE_COLOR_LERP,
-      )
-      setTreeParticleSwarmAppearance(
-        arrangementTreeParticles,
-        arrangementParticleColor,
-        PARTICLE_BASE_OPACITY +
-          PARTICLE_OPACITY_SWING *
-            (arrangementBaseActivity + arrangementClickStrength * 0.72),
-      )
-      updateTreeParticleSwarm(
-        arrangementTreeParticles,
-        elapsed,
-        delta,
-        arrangementActivity,
-        {
-          speedScale: 0.96 + arrangementClickStrength * 0.24,
-          waveAmplitude: 0.06 + arrangementClickStrength * 0.03,
-          waveFrequency: 1.76,
-          waveSpeedScale: 1.04,
-        },
-      )
+      return {
+        variant,
+        swarm,
+        baseColor,
+        currentColor,
+        targetColor,
+        clickFlash,
+        unregister,
+      }
+    })
 
-      playTreeMaterial.emissiveIntensity =
-        0.24 + Math.sin(elapsed * 1.2) * 0.04 + playActivity * 0.2
-      arrangementTreeMaterial.emissiveIntensity =
-        0.22 +
-        Math.sin(elapsed * 1.05 + 1.4) * 0.04 +
-        arrangementActivity * 0.14
+    const unsubscribePulse = registerFrame(({ delta, elapsed }) => {
+      const baseActivity = isPlayingRef.current
+        ? SWARM_PARTICLE_ACTIVITY_PLAYING
+        : SWARM_PARTICLE_ACTIVITY_PAUSED
+
+      particleTreeEntries.forEach((entry) => {
+        if (entry.clickFlash.pending) {
+          entry.clickFlash.pending = false
+          entry.clickFlash.startTime = elapsed
+        }
+
+        let clickStrength = 0
+
+        if (entry.clickFlash.startTime !== null) {
+          const sinceClick = elapsed - entry.clickFlash.startTime
+
+          if (sinceClick > SWARM_CLICK_FLASH_DURATION) {
+            entry.clickFlash.startTime = null
+          } else if (sinceClick >= 0) {
+            const normalizedClick = sinceClick / SWARM_CLICK_FLASH_DURATION
+            clickStrength = Math.sin(normalizedClick * Math.PI) ** 1.6
+          }
+        }
+
+        const activity = baseActivity + clickStrength * 0.85
+        entry.targetColor.lerpColors(entry.baseColor, magentaColor, clickStrength)
+        entry.currentColor.lerp(entry.targetColor, PARTICLE_COLOR_LERP)
+        setTreeParticleSwarmAppearance(
+          entry.swarm,
+          entry.currentColor,
+          PARTICLE_BASE_OPACITY +
+            PARTICLE_OPACITY_SWING * (baseActivity + clickStrength * 0.72),
+        )
+
+        const isGreen = entry.variant === 'green'
+        updateTreeParticleSwarm(entry.swarm, elapsed, delta, activity, {
+          speedScale: isGreen
+            ? 1.12 + clickStrength * 0.22
+            : 0.96 + clickStrength * 0.2,
+          waveAmplitude: isGreen
+            ? 0.12 + clickStrength * 0.06
+            : 0.07 + clickStrength * 0.05,
+          waveFrequency: isGreen ? 2.08 : 1.78,
+          waveSpeedScale: isGreen ? 1.2 : 1.02,
+        })
+      })
 
       const signPulse = 0.5 + Math.sin(elapsed * SECTION_SIGN_PULSE_SPEED) * 0.5
       signFaceMaterial.color.lerpColors(signFaceColorMin, signFaceColorMax, signPulse)
@@ -671,17 +594,19 @@ function Trees() {
     })
 
     return () => {
-      unregisterPlay()
-      unregisterArrangement()
       sectionSignUnsubscribers.forEach((unregister) => {
         unregister()
+      })
+      particleTreeEntries.forEach((entry) => {
+        entry.unregister()
       })
       unsubscribePulse()
 
       scene.remove(treeGroup)
 
-      disposeTreeParticleSwarm(playTreeParticles)
-      disposeTreeParticleSwarm(arrangementTreeParticles)
+      particleTreeEntries.forEach((entry) => {
+        disposeTreeParticleSwarm(entry.swarm)
+      })
       glowParticleTexture.dispose()
       trunkGeometry.dispose()
       crownGeometry.dispose()
@@ -689,9 +614,6 @@ function Trees() {
       arrowOmbreTexture.dispose()
       darkTrunkMaterial.dispose()
       darkCrownMaterial.dispose()
-      amberTrunkMaterial.dispose()
-      playTreeMaterial.dispose()
-      arrangementTreeMaterial.dispose()
       signFaceMaterial.dispose()
       signEdgeMaterial.dispose()
     }
@@ -702,7 +624,6 @@ function Trees() {
     safeSectionCount,
     stepSection,
     switchArrangement,
-    togglePlayback,
   ])
 
   return null

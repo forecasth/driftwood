@@ -42,6 +42,41 @@
   inset: 0;
 }
 
+.scene-ui {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.scene-audio-button {
+  position: absolute;
+  top: max(1rem, env(safe-area-inset-top));
+  right: max(1rem, env(safe-area-inset-right));
+  border: 1px solid rgba(255, 209, 136, 0.62);
+  background: rgba(18, 28, 24, 0.72);
+  color: #ffe2b4;
+  padding: 0.62rem 0.88rem;
+  border-radius: 999px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background-color 180ms ease, border-color 180ms ease, transform 180ms ease;
+}
+
+.scene-audio-button:hover {
+  background: rgba(34, 45, 38, 0.82);
+  border-color: rgba(255, 209, 136, 0.9);
+  transform: translateY(-1px);
+}
+
+.scene-audio-button:focus-visible {
+  outline: 2px solid rgba(255, 209, 136, 0.92);
+  outline-offset: 2px;
+}
+
 .scene-canvas {
   display: block;
   width: 100%;
