@@ -14,8 +14,6 @@ const FOREST_OUTER_RADIUS = CAMERA_ORBIT_RADIUS + 38
 const ENTRY_CLEARING_CENTER_X = 0
 const ENTRY_CLEARING_CENTER_Z = -3.7
 const ENTRY_CLEARING_RADIUS = 8
-const SECTION_SIGN_RADIUS = CAMERA_ORBIT_RADIUS + 18.5
-const SECTION_SIGN_SIDE_OFFSET = 8.1
 const SECTION_SIGN_HEIGHT = 0
 const SECTION_SIGN_FOCUS_Y = 0.56
 const SECTION_ARROW_CENTER_Y = GROUND_LEVEL + 0.94
@@ -24,6 +22,33 @@ const SECTION_SIGN_FACE_BASE = 0.42
 const SECTION_SIGN_FACE_PULSE = 0.78
 const SECTION_SIGN_EDGE_BASE = 0.74
 const SECTION_SIGN_EDGE_PULSE = 1.08
+const SECTION_SIGN_PHONE_MAX_SHORTEST_SIDE = 500
+const SECTION_SIGN_SMALL_MAX_WIDTH = 760
+const SECTION_SIGN_MEDIUM_MAX_WIDTH = 1280
+const SECTION_SIGN_LAYOUT_PHONE = Object.freeze({
+  key: 'phone',
+  radiusOffset: 7.4,
+  sideOffset: 2.9,
+  scale: 0.68,
+})
+const SECTION_SIGN_LAYOUT_SMALL = Object.freeze({
+  key: 'small',
+  radiusOffset: 10.4,
+  sideOffset: 4.1,
+  scale: 0.72,
+})
+const SECTION_SIGN_LAYOUT_MEDIUM = Object.freeze({
+  key: 'medium',
+  radiusOffset: 16,
+  sideOffset: 6.6,
+  scale: 0.86,
+})
+const SECTION_SIGN_LAYOUT_LARGE = Object.freeze({
+  key: 'large',
+  radiusOffset: 18.5,
+  sideOffset: 8.1,
+  scale: 1,
+})
 const SWARM_TREE_RATIO = 1 / 3
 const SWARM_PARTICLE_COUNT = 18
 const SWARM_LIGHT_AMBER = '#ffaf59'
@@ -44,6 +69,30 @@ function randomRange(min, max) {
 
 function randomRingRadius(innerRadius, outerRadius) {
   return Math.sqrt(randomRange(innerRadius ** 2, outerRadius ** 2))
+}
+
+function resolveSectionSignLayout(viewportWidth, viewportHeight) {
+  if (!Number.isFinite(viewportWidth) || viewportWidth <= 0) {
+    return SECTION_SIGN_LAYOUT_LARGE
+  }
+
+  if (Number.isFinite(viewportHeight) && viewportHeight > 0) {
+    const shortestSide = Math.min(viewportWidth, viewportHeight)
+
+    if (shortestSide <= SECTION_SIGN_PHONE_MAX_SHORTEST_SIDE) {
+      return SECTION_SIGN_LAYOUT_PHONE
+    }
+  }
+
+  if (viewportWidth <= SECTION_SIGN_SMALL_MAX_WIDTH) {
+    return SECTION_SIGN_LAYOUT_SMALL
+  }
+
+  if (viewportWidth <= SECTION_SIGN_MEDIUM_MAX_WIDTH) {
+    return SECTION_SIGN_LAYOUT_MEDIUM
+  }
+
+  return SECTION_SIGN_LAYOUT_LARGE
 }
 
 function shuffleInPlace(items) {
@@ -317,6 +366,7 @@ function createSectionSign({
 function Trees() {
   const {
     getScene,
+    getRenderer,
     registerFrame,
     registerClickable,
     switchArrangement,
@@ -333,8 +383,9 @@ function Trees() {
 
   useEffect(() => {
     const scene = getScene()
+    const renderer = getRenderer()
 
-    if (!scene) {
+    if (!scene || !renderer) {
       return undefined
     }
 
@@ -439,21 +490,13 @@ function Trees() {
     const targetMatrix = new THREE.Matrix4()
     const targetQuaternion = new THREE.Quaternion()
     const sectionSignUnsubscribers = []
+    const sectionSigns = []
     const signSideConfigs = [
       { side: -1, direction: 1, name: 'section-sign-left', sectionDelta: -1 },
       { side: 1, direction: -1, name: 'section-sign-right', sectionDelta: 1 },
     ]
 
     for (let section = 0; section < safeSectionCount; section += 1) {
-      const sectionAngle = (section / safeSectionCount) * Math.PI * 2
-      outward.set(Math.sin(sectionAngle), 0, -Math.cos(sectionAngle))
-      lateral.set(Math.cos(sectionAngle), 0, Math.sin(sectionAngle))
-      focusTarget.set(
-        CAMERA_ORBIT_CENTER_X + outward.x * CAMERA_ORBIT_RADIUS,
-        SECTION_SIGN_FOCUS_Y,
-        CAMERA_ORBIT_CENTER_Z + outward.z * CAMERA_ORBIT_RADIUS,
-      )
-
       signSideConfigs.forEach(({ side, direction, name, sectionDelta }) => {
         const sectionSign = createSectionSign({
           direction,
@@ -463,19 +506,8 @@ function Trees() {
         })
 
         sectionSign.name = `${name}-${section}`
-        sectionSign.position.set(
-          CAMERA_ORBIT_CENTER_X +
-            outward.x * SECTION_SIGN_RADIUS +
-            lateral.x * SECTION_SIGN_SIDE_OFFSET * side,
-          SECTION_SIGN_HEIGHT,
-          CAMERA_ORBIT_CENTER_Z +
-            outward.z * SECTION_SIGN_RADIUS +
-            lateral.z * SECTION_SIGN_SIDE_OFFSET * side,
-        )
-        targetMatrix.lookAt(sectionSign.position, focusTarget, signUp)
-        targetQuaternion.setFromRotationMatrix(targetMatrix)
-        sectionSign.quaternion.copy(targetQuaternion)
         treeGroup.add(sectionSign)
+        sectionSigns.push({ sectionSign, section, side })
 
         sectionSignUnsubscribers.push(
           registerClickable(sectionSign, () => {
@@ -485,6 +517,54 @@ function Trees() {
         )
       })
     }
+
+    const applySectionSignLayout = (layout) => {
+      sectionSigns.forEach(({ sectionSign, section, side }) => {
+        const sectionAngle = (section / safeSectionCount) * Math.PI * 2
+        outward.set(Math.sin(sectionAngle), 0, -Math.cos(sectionAngle))
+        lateral.set(Math.cos(sectionAngle), 0, Math.sin(sectionAngle))
+        focusTarget.set(
+          CAMERA_ORBIT_CENTER_X + outward.x * CAMERA_ORBIT_RADIUS,
+          SECTION_SIGN_FOCUS_Y,
+          CAMERA_ORBIT_CENTER_Z + outward.z * CAMERA_ORBIT_RADIUS,
+        )
+
+        sectionSign.position.set(
+          CAMERA_ORBIT_CENTER_X +
+            outward.x * (CAMERA_ORBIT_RADIUS + layout.radiusOffset) +
+            lateral.x * layout.sideOffset * side,
+          SECTION_SIGN_HEIGHT,
+          CAMERA_ORBIT_CENTER_Z +
+            outward.z * (CAMERA_ORBIT_RADIUS + layout.radiusOffset) +
+            lateral.z * layout.sideOffset * side,
+        )
+        targetMatrix.lookAt(sectionSign.position, focusTarget, signUp)
+        targetQuaternion.setFromRotationMatrix(targetMatrix)
+        sectionSign.quaternion.copy(targetQuaternion)
+        sectionSign.scale.setScalar(layout.scale)
+      })
+    }
+
+    const canvasElement = renderer.domElement
+    let activeLayoutKey = ''
+    const applyResponsiveSectionSignLayout = () => {
+      const viewportWidth = canvasElement.clientWidth || window.innerWidth || 0
+      const viewportHeight = canvasElement.clientHeight || window.innerHeight || 0
+      const layout = resolveSectionSignLayout(viewportWidth, viewportHeight)
+
+      if (layout.key === activeLayoutKey) {
+        return
+      }
+
+      activeLayoutKey = layout.key
+      applySectionSignLayout(layout)
+    }
+
+    applyResponsiveSectionSignLayout()
+    const sectionSignResizeObserver = new ResizeObserver(() => {
+      applyResponsiveSectionSignLayout()
+    })
+    sectionSignResizeObserver.observe(canvasElement)
 
     const glowParticleTexture = createGlowSpriteTexture()
     const particleTreeCount = Math.floor(forestTrees.length * SWARM_TREE_RATIO)
@@ -597,6 +677,7 @@ function Trees() {
       sectionSignUnsubscribers.forEach((unregister) => {
         unregister()
       })
+      sectionSignResizeObserver.disconnect()
       particleTreeEntries.forEach((entry) => {
         entry.unregister()
       })
@@ -619,6 +700,7 @@ function Trees() {
     }
   }, [
     getScene,
+    getRenderer,
     registerClickable,
     registerFrame,
     safeSectionCount,

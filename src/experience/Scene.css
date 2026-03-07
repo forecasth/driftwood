@@ -77,6 +77,53 @@
   outline-offset: 2px;
 }
 
+.scene-rotate-hint {
+  position: absolute;
+  left: 50%;
+  bottom: max(0.9rem, env(safe-area-inset-bottom));
+  width: 2.7rem;
+  height: 2.7rem;
+  border-radius: 999px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 175, 89, 0.7);
+  background: rgba(33, 15, 9, 0.52);
+  color: #ffd188;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 0 20px rgba(255, 132, 66, 0.22);
+  pointer-events: none;
+  animation: scene-rotate-throb 1.5s ease-in-out infinite;
+}
+
+.scene-rotate-hint-icon {
+  width: 1.3rem;
+  height: 1.3rem;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@keyframes scene-rotate-throb {
+  0% {
+    transform: translateX(-50%) scale(0.92);
+    border-color: rgba(255, 175, 89, 0.48);
+    box-shadow: 0 0 10px rgba(255, 132, 66, 0.16);
+  }
+
+  50% {
+    transform: translateX(-50%) scale(1);
+    border-color: rgba(255, 196, 120, 0.92);
+    box-shadow: 0 0 24px rgba(255, 136, 72, 0.35);
+  }
+
+  100% {
+    transform: translateX(-50%) scale(0.92);
+    border-color: rgba(255, 175, 89, 0.48);
+    box-shadow: 0 0 10px rgba(255, 132, 66, 0.16);
+  }
+}
+
 .scene-canvas {
   display: block;
   width: 100%;
