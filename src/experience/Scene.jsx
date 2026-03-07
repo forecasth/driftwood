@@ -7,8 +7,8 @@ import CameraController from './components/CameraController.jsx'
 import EntryOverlay from './components/EntryOverlay.jsx'
 import EntryStones from './components/EntryStones.jsx'
 import Lighting from './components/Lighting.jsx'
-import Particles from './components/Particles.jsx'
 import SkyDial from './components/SkyDial.jsx'
+import Stars from './components/Stars.jsx'
 import Trees from './components/Trees.jsx'
 import { getSystemDayProgress, sampleDayCycle, wrapDayProgress } from './dayCycle.js'
 import { SceneContext } from './sceneContext.js'
@@ -564,9 +564,9 @@ function Scene() {
       <SceneContext.Provider value={sceneApi}>
         {sceneToken > 0 ? (
           <Fragment key={sceneToken}>
+            <Stars />
             <Lighting />
             <SkyDial />
-            <Particles />
             <EntryStones />
             <Trees />
             <CameraController introStarted={hasEntered} />
