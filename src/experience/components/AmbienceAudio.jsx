@@ -3,7 +3,7 @@ import { getArrangement } from '../audio/arrangements/index.js'
 import { createAudioEngine } from '../audio/engine.js'
 import { useSceneContext } from '../sceneContext.js'
 
-function AmbienceAudio() {
+function AmbienceAudio({ volume = 0.8 }) {
   const { arrangementId, isPlaying } = useSceneContext()
   const engineRef = useRef(null)
 
@@ -40,6 +40,17 @@ function AmbienceAudio() {
 
     return undefined
   }, [arrangementId, isPlaying])
+
+  useEffect(() => {
+    const engine = engineRef.current
+
+    if (!engine) {
+      return undefined
+    }
+
+    engine.setVolume(volume)
+    return undefined
+  }, [arrangementId, volume])
 
   return null
 }

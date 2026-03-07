@@ -30,7 +30,7 @@ function wrapSectionIndex(index, sectionCount) {
   return ((roundedIndex % sectionCount) + sectionCount) % sectionCount
 }
 
-function Scene() {
+function Scene({ autoStartAudio = false }) {
   const mountRef = useRef(null)
   const sceneStateRef = useRef(null)
   const frameSubscribersRef = useRef(new Set())
@@ -38,7 +38,8 @@ function Scene() {
   const isPlayingRef = useRef(false)
   const arrangementIds = useMemo(() => listArrangements(), [])
   const [arrangementId, setArrangementId] = useState(defaultArrangementId)
-  const [isPlaying, setIsPlaying] = useState(false)
+  const [isPlaying, setIsPlaying] = useState(() => Boolean(autoStartAudio))
+  const [musicVolume, setMusicVolume] = useState(0.8)
   const [dayProgress, setDayProgressState] = useState(() => getSystemDayProgress())
   const [isSystemTimeEnabled, setIsSystemTimeEnabled] = useState(true)
   const [sceneToken, setSceneToken] = useState(0)
@@ -71,12 +72,16 @@ function Scene() {
     }
   }, [])
 
-  const registerClickable = useCallback((object, onClick) => {
+  const registerClickable = useCallback((object, onClick, options = undefined) => {
     if (!object || typeof onClick !== 'function') {
       return () => {}
     }
 
-    clickablesRef.current.set(object.uuid, { object, onClick })
+    clickablesRef.current.set(object.uuid, {
+      object,
+      onClick,
+      cursor: typeof options?.cursor === 'string' ? options.cursor : '',
+    })
 
     return () => {
       const current = clickablesRef.current.get(object.uuid)
@@ -102,6 +107,16 @@ function Scene() {
     }
 
     setIsPlaying((playing) => !playing)
+  }, [])
+
+  const handleVolumeChange = useCallback((event) => {
+    const nextValue = Number(event.target.value)
+
+    if (!Number.isFinite(nextValue)) {
+      return
+    }
+
+    setMusicVolume(Math.min(1, Math.max(0, nextValue / 100)))
   }, [])
 
   const setDayProgress = useCallback((nextProgress) => {
@@ -328,24 +343,14 @@ function Scene() {
       setSceneToken((value) => value + 1)
     })
 
-    const handlePointerMove = (event) => {
-      const bounds = mountElement.getBoundingClientRect()
-      pointer.x = ((event.clientX - bounds.left) / bounds.width - 0.5) * 2
-      pointer.y = ((event.clientY - bounds.top) / bounds.height - 0.5) * 2
-    }
-
-    const handlePointerLeave = () => {
-      pointer.set(0, 0)
-    }
-
-    const handlePointerDown = (event) => {
+    const resolveClickableIntersection = (clientX, clientY) => {
       if (clickables.size === 0) {
-        return
+        return null
       }
 
       const bounds = mountElement.getBoundingClientRect()
-      raycastPointer.x = ((event.clientX - bounds.left) / bounds.width) * 2 - 1
-      raycastPointer.y = -((event.clientY - bounds.top) / bounds.height) * 2 + 1
+      raycastPointer.x = ((clientX - bounds.left) / bounds.width) * 2 - 1
+      raycastPointer.y = -((clientY - bounds.top) / bounds.height) * 2 + 1
       raycaster.setFromCamera(raycastPointer, camera)
 
       const targets = Array.from(clickables.values(), (entry) => entry.object)
@@ -358,12 +363,40 @@ function Scene() {
           const entry = clickables.get(current.uuid)
 
           if (entry) {
-            entry.onClick(intersection)
-            return
+            return { entry, intersection }
           }
 
           current = current.parent
         }
+      }
+
+      return null
+    }
+
+    const handlePointerMove = (event) => {
+      const bounds = mountElement.getBoundingClientRect()
+      pointer.x = ((event.clientX - bounds.left) / bounds.width - 0.5) * 2
+      pointer.y = ((event.clientY - bounds.top) / bounds.height - 0.5) * 2
+
+      if (event.pointerType !== 'mouse' && event.pointerType !== 'pen') {
+        mountElement.style.cursor = ''
+        return
+      }
+
+      const hoverResult = resolveClickableIntersection(event.clientX, event.clientY)
+      mountElement.style.cursor = hoverResult?.entry.cursor ?? ''
+    }
+
+    const handlePointerLeave = () => {
+      pointer.set(0, 0)
+      mountElement.style.cursor = ''
+    }
+
+    const handlePointerDown = (event) => {
+      const clickResult = resolveClickableIntersection(event.clientX, event.clientY)
+
+      if (clickResult) {
+        clickResult.entry.onClick(clickResult.intersection)
       }
     }
 
@@ -406,6 +439,7 @@ function Scene() {
       mountElement.removeEventListener('pointermove', handlePointerMove)
       mountElement.removeEventListener('pointerleave', handlePointerLeave)
       mountElement.removeEventListener('pointerdown', handlePointerDown)
+      mountElement.style.cursor = ''
 
       scene.remove(ground)
       ground.geometry.dispose()
@@ -444,14 +478,26 @@ function Scene() {
     <div className="scene-shell" style={shellStyle}>
       <div className="scene-mount" ref={mountRef} />
       <div className="scene-ui">
-        <button
-          type="button"
-          className="scene-audio-button"
-          onClick={togglePlayback}
-          aria-pressed={isPlaying}
-        >
-          {isPlaying ? 'Pause Music' : 'Play Music'}
-        </button>
+        <div className="scene-audio-controls">
+          <button
+            type="button"
+            className="scene-audio-button"
+            onClick={togglePlayback}
+            aria-pressed={isPlaying}
+          >
+            {isPlaying ? 'Pause Music' : 'Play Music'}
+          </button>
+          <input
+            id="scene-volume-slider"
+            className="scene-volume-slider"
+            type="range"
+            min="0"
+            max="100"
+            value={Math.round(musicVolume * 100)}
+            onChange={handleVolumeChange}
+            aria-label="Music volume"
+          />
+        </div>
         {showRotateHint ? (
           <div className="scene-rotate-hint" aria-hidden="true">
             <svg
@@ -476,7 +522,7 @@ function Scene() {
             <EntryStones />
             <Trees />
             <CameraController />
-            <AmbienceAudio />
+            <AmbienceAudio volume={musicVolume} />
           </Fragment>
         ) : null}
       </SceneContext.Provider>
